@@ -68,50 +68,90 @@ jobs:
             exit 1
           fi
           
+          echo "Debug: Checking config file contents..."
+          echo "First 30 lines of config.ini:"
+          head -n 30 "$CONFIG_FILE" || true
+          
           # Check for required sections and keys
           MISSING_CONFIG=()
           
           # Check MaxPlayers
           if ! grep -q "^MaxPlayers" "$CONFIG_FILE"; then
             MISSING_CONFIG+=("MaxPlayers")
+            echo "Debug: MaxPlayers NOT found"
+          else
+            echo "Debug: MaxPlayers found"
           fi
           
           # Check Revive section
           if ! grep -q "^\[Revive\]" "$CONFIG_FILE"; then
             MISSING_CONFIG+=("Revive section header [Revive]")
+            echo "Debug: [Revive] NOT found"
+          else
+            echo "Debug: [Revive] found"
           fi
           if ! grep -q "^ReviveEnabled" "$CONFIG_FILE"; then
             MISSING_CONFIG+=("ReviveEnabled key")
+            echo "Debug: ReviveEnabled NOT found"
+          else
+            echo "Debug: ReviveEnabled found"
           fi
           if ! grep -q "^ReviveKeybind" "$CONFIG_FILE"; then
             MISSING_CONFIG+=("ReviveKeybind key")
+            echo "Debug: ReviveKeybind NOT found"
+          else
+            echo "Debug: ReviveKeybind found"
           fi
           
           # Check Throw section
           if ! grep -q "^\[Throw\]" "$CONFIG_FILE"; then
             MISSING_CONFIG+=("Throw section header [Throw]")
+            echo "Debug: [Throw] NOT found"
+          else
+            echo "Debug: [Throw] found"
           fi
           if ! grep -q "^ThrowDistanceMultiplier" "$CONFIG_FILE"; then
             MISSING_CONFIG+=("ThrowDistanceMultiplier key")
+            echo "Debug: ThrowDistanceMultiplier NOT found"
+          else
+            echo "Debug: ThrowDistanceMultiplier found"
           fi
           
           # Check Speed section (new)
           if ! grep -q "^\[Speed\]" "$CONFIG_FILE"; then
             MISSING_CONFIG+=("Speed section header [Speed]")
+            echo "Debug: [Speed] NOT found"
+          else
+            echo "Debug: [Speed] found"
           fi
           if ! grep -q "^SpeedBoostEnabled" "$CONFIG_FILE"; then
             MISSING_CONFIG+=("SpeedBoostEnabled key")
+            echo "Debug: SpeedBoostEnabled NOT found"
+          else
+            echo "Debug: SpeedBoostEnabled found"
           fi
           if ! grep -q "^SpeedMultiplier" "$CONFIG_FILE"; then
             MISSING_CONFIG+=("SpeedMultiplier key")
+            echo "Debug: SpeedMultiplier NOT found"
+          else
+            echo "Debug: SpeedMultiplier found"
           fi
           if ! grep -q "^SpeedKeybind" "$CONFIG_FILE"; then
             MISSING_CONFIG+=("SpeedKeybind key")
+            echo "Debug: SpeedKeybind NOT found"
+          else
+            echo "Debug: SpeedKeybind found"
           fi
           
           if [ ${#MISSING_CONFIG[@]} -ne 0 ]; then
             echo "ERROR: Missing required config entries:"
             printf '  - %s\n' "${MISSING_CONFIG[@]}"
+            echo ""
+            echo "Debug: Showing all lines containing brackets:"
+            grep -n "\[" "$CONFIG_FILE" || echo "No brackets found"
+            echo ""
+            echo "Debug: Showing all lines starting with Revive, Throw, or Speed:"
+            grep -n "^Revive\|^Throw\|^Speed" "$CONFIG_FILE" || echo "No matching lines found"
             exit 1
           fi
           
