@@ -247,7 +247,7 @@ local function update_vehicle_speeds(mod, multiplier, isActive)
       end
     end
 
-    -- Apply speed based on ServerMode
+    -- Apply speed based on ControlMode
     local modified = 0
     for _, vehicle in ipairs(vehicles) do
       local shouldModify = false

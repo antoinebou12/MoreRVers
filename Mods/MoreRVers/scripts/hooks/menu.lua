@@ -35,7 +35,7 @@ local function display_menu(mod)
   else
     print("  (Each player controls themselves)")
   end
-  print("  [M] Toggle Server Mode")
+  print("  [F10] Toggle Control Mode")
   print("")
   print("Feature Status:")
   print(string.format("  [1] Speed Boost:      %s (%.1fx)", speedStatus, speedMult))
@@ -157,7 +157,7 @@ local function handle_menu_key(mod, key)
     print("Menu closed. Press F7 to reopen.")
     print("")
 
-  elseif key == Key.M then
+  elseif key == Key.F10 then
     -- Toggle ControlMode (Global <-> Individual)
     local currentMode = mod.Config.ControlMode or mod.Config.ServerMode or "Global"
     if currentMode == "Global" then
@@ -233,10 +233,10 @@ local function register_menu_keybinds(mod)
     end
   end
 
-  -- Register M key for ControlMode toggle
+  -- Register F10 key for ControlMode toggle
   local okM, errM = pcall(function()
-    RegisterKeyBind(Key.M, function()
-      handle_menu_key(mod, Key.M)
+    RegisterKeyBind(Key.F10, function()
+      handle_menu_key(mod, Key.F10)
     end)
   end)
 
