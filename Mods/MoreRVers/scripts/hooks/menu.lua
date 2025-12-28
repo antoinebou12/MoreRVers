@@ -11,7 +11,7 @@ local menuKeybind = nil
 
 -- Display the menu in console
 local function display_menu(mod)
-  local serverMode = mod.Config.ServerMode or "Global"
+  local serverMode = mod.Config.ControlMode or mod.Config.ServerMode or "Global"
   local speedStatus = mod.Config.SpeedBoostEnabled and "ENABLED" or "DISABLED"
   local speedMult = mod.Config.SpeedMultiplier or 2.0
 
@@ -158,13 +158,16 @@ local function handle_menu_key(mod, key)
     print("")
 
   elseif key == Key.M then
-    -- Toggle ServerMode (Global <-> Individual)
-    if mod.Config.ServerMode == "Global" then
-      mod.Config.ServerMode = "Individual"
-      mod.Log("ServerMode: INDIVIDUAL (each player controls themselves)")
+    -- Toggle ControlMode (Global <-> Individual)
+    local currentMode = mod.Config.ControlMode or mod.Config.ServerMode or "Global"
+    if currentMode == "Global" then
+      mod.Config.ControlMode = "Individual"
+      mod.Config.ServerMode = "Individual"  -- Backward compatibility
+      mod.Log("ControlMode: INDIVIDUAL (each player controls themselves)")
     else
-      mod.Config.ServerMode = "Global"
-      mod.Log("ServerMode: GLOBAL (host controls all players)")
+      mod.Config.ControlMode = "Global"
+      mod.Config.ServerMode = "Global"  -- Backward compatibility
+      mod.Log("ControlMode: GLOBAL (host controls all players)")
     end
     display_menu(mod)
   end
@@ -230,7 +233,7 @@ local function register_menu_keybinds(mod)
     end
   end
 
-  -- Register M key for ServerMode toggle
+  -- Register M key for ControlMode toggle
   local okM, errM = pcall(function()
     RegisterKeyBind(Key.M, function()
       handle_menu_key(mod, Key.M)

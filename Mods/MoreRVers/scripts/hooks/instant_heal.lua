@@ -374,8 +374,8 @@ local function hook_damage_event(mod)
         
         if not isPawn then return end
 
-        -- Check ServerMode to determine who gets healed
-        local serverMode = mod.Config.ServerMode or "Global"
+        -- Check ControlMode to determine who gets healed
+        local serverMode = mod.Config.ControlMode or mod.Config.ServerMode or "Global"
         if serverMode == "Individual" then
           -- Individual mode: Only heal this player's pawn
           if not is_player_pawn(self, mod) then

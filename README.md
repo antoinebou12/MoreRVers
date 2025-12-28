@@ -21,10 +21,11 @@ This mod patches the game's multiplayer cap at runtime, allowing you to host ses
 - **Non-Destructive** - No permanent game file modifications
 - **Flexible Limits** - Configurable player count from 1-24
 - **Runtime Patching** - Applied immediately upon session creation
-- **Revive System** - Configurable keybind to revive/respawn players
-- **Instant Heal** - Automatically restore health to full when it drops below a threshold
+- **Global/Individual Modes** - Choose between host-controlled (Global) or per-player (Individual) feature control
+- **Revive System** - Configurable keybind to revive/respawn players (enabled by default)
+- **Instant Heal** - Automatically restore health to full when it drops below a threshold (enabled by default)
 - **Enhanced Throw Distance** - Configurable multiplier for player throw distance on damage/death
-- **Speed Boost** - Configurable movement speed multiplier with optional toggle keybind
+- **Speed Boost** - Configurable movement speed multiplier with optional toggle keybind (enabled by default)
 
 ## Installation
 
@@ -131,6 +132,9 @@ Edit `UE4SS/Mods/MoreRVers/config.ini`:
 ```ini
 MaxPlayers = 8
 
+[Mode]
+ControlMode = Global
+
 [Revive]
 ReviveEnabled = 1
 ReviveKeybind = F6
@@ -150,14 +154,28 @@ InstantHealThreshold = 0.10
 
 **Configuration Parameters:**
 
+### Mode Settings
+- **ControlMode**: Control how features are applied in multiplayer
+  - `Global` (default): Host controls ALL players' features
+    - When host presses F5, ALL players get speed boost
+    - When host presses F6, ALL players get revived
+    - Instant heal applies to ALL players globally
+    - Only the host's keybinds affect all players
+  - `Individual`: Each player controls their own features independently
+    - Each player can toggle their own speed, revive themselves
+    - Instant heal only affects the player who enabled it
+    - Works in single player or when each player controls themselves
+
 ### MaxPlayers
 - Default: 8 (vanilla game limit is 4)
 - Range: 1-24
 - Recommended: 8 for optimal stability
 
 ### Revive Settings
-- **ReviveEnabled**: Enable/disable revive feature (1 = enabled, 0 = disabled)
+- **ReviveEnabled**: Enable/disable revive feature (1 = enabled by default, 0 = disabled)
 - **ReviveKeybind**: Keybind for revive (F6, R, F5, etc. - any valid UE4SS key)
+  - **Global mode**: Host's keybind revives ALL players
+  - **Individual mode**: Each player revives themselves
 
 ### Throw Distance Settings
 - **ThrowDistanceMultiplier**: Multiplier for throw distance when players take damage/die
@@ -166,7 +184,7 @@ InstantHealThreshold = 0.10
   - Range: 0.1 - 10.0
 
 ### Speed Boost Settings
-- **SpeedBoostEnabled**: Enable/disable speed boost feature (1 = enabled, 0 = disabled)
+- **SpeedBoostEnabled**: Enable/disable speed boost feature (1 = enabled by default, 0 = disabled)
 - **SpeedMultiplier**: Multiplier for player movement speed
   - 1.0 = normal speed
   - 2.0 = double speed (default)
@@ -176,9 +194,11 @@ InstantHealThreshold = 0.10
   - Leave empty for persistent boost (always active)
   - Valid keys: F1-F12, etc.
   - Example: `SpeedKeybind = F5` (hold F5 to run faster)
+  - **Global mode**: Host's keybind controls ALL players' speed
+  - **Individual mode**: Each player controls their own speed
 
 ### Instant Heal Settings
-- **InstantHealEnabled**: Enable/disable instant heal feature (1 = enabled, 0 = disabled)
+- **InstantHealEnabled**: Enable/disable instant heal feature (1 = enabled by default, 0 = disabled)
 - **InstantHealThreshold**: Health threshold percentage below which player is automatically healed to full
   - 0.10 = 10% (default) - heal when health drops below 10%
   - 0.25 = 25% - heal when health drops below 25%
@@ -186,7 +206,8 @@ InstantHealThreshold = 0.10
   - Range: 0.01 - 0.99
   - **Note**: This prevents death by healing before health reaches 0%
   - When health drops below this percentage, player is instantly restored to full health
-  - Only affects local player (server-safe)
+  - **Global mode**: Host's settings apply to ALL players
+  - **Individual mode**: Each player's heal works independently
 
 The game must be restarted for configuration changes to take effect.
 

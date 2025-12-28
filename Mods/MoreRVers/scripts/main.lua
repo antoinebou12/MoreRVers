@@ -164,12 +164,15 @@ local function parse_ini(filepath)
         config.MenuKeybind = value
       end
 
-      -- Parse ServerMode (string: Global or Individual)
-      if key == "ServerMode" then
+      -- Parse ControlMode (string: Global or Individual)
+      -- Also support legacy ServerMode for backward compatibility
+      if key == "ControlMode" or key == "ServerMode" then
         local mode = value:match("^%s*(.-)%s*$")  -- Trim whitespace
         if mode:lower() == "global" or mode:lower() == "individual" then
           -- Capitalize first letter for consistency
-          config.ServerMode = mode:sub(1,1):upper() .. mode:sub(2):lower()
+          config.ControlMode = mode:sub(1,1):upper() .. mode:sub(2):lower()
+          -- Also set ServerMode for backward compatibility
+          config.ServerMode = config.ControlMode
         end
       end
     end
@@ -193,7 +196,8 @@ if ModPath then
       EnableClientUiTweaks = false,
       LogLevel = "INFO",
       TimestampFormat = "%H:%M:%S",
-      ServerMode = parsedConfig.ServerMode or "Global",  -- Global by default (host controls all players)
+      ControlMode = parsedConfig.ControlMode or parsedConfig.ServerMode or "Global",  -- Global by default (host controls all players)
+      ServerMode = parsedConfig.ControlMode or parsedConfig.ServerMode or "Global",  -- Backward compatibility alias
       ReviveEnabled = parsedConfig.ReviveEnabled ~= nil and parsedConfig.ReviveEnabled or true,  -- ENABLED by default
       ReviveKeybind = parsedConfig.ReviveKeybind or "F6",
       ThrowDistanceMultiplier = parsedConfig.ThrowDistanceMultiplier or 2.0,
@@ -216,7 +220,8 @@ MoreRVers.Config = configLoaded or {
   EnableClientUiTweaks = false,
   LogLevel = "INFO",
   TimestampFormat = "%H:%M:%S",
-  ServerMode = "Global",  -- Global by default (host controls all players)
+  ControlMode = "Global",  -- Global by default (host controls all players)
+  ServerMode = "Global",  -- Backward compatibility alias
   ReviveEnabled = true,  -- ENABLED by default
   ReviveKeybind = "F6",
   ThrowDistanceMultiplier = 2.0,

@@ -168,12 +168,12 @@ local function revive_single_player(mod, PlayerController)
   return err or false
 end
 
--- Attempt to revive player(s) based on ServerMode
+-- Attempt to revive player(s) based on ControlMode
 local function revive_player(mod)
   mod.Log("=== REVIVE ATTEMPT INITIATED ===")
   mod.Debug("Revive attempt initiated")
-
-  local serverMode = mod.Config.ServerMode or "Global"
+  
+  local serverMode = mod.Config.ControlMode or mod.Config.ServerMode or "Global"
 
   local ok, err = pcall(function()
     if serverMode == "Global" then

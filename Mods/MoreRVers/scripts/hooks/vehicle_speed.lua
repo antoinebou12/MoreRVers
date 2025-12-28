@@ -220,9 +220,9 @@ local function is_player_vehicle(vehicle, mod)
   return ok and result == true
 end
 
--- Update speed for vehicles based on ServerMode (Global = all vehicles, Individual = this player's only)
+-- Update speed for vehicles based on ControlMode (Global = all vehicles, Individual = this player's only)
 local function update_vehicle_speeds(mod, multiplier, isActive)
-  local serverMode = mod.Config.ServerMode or "Global"
+  local serverMode = mod.Config.ControlMode or mod.Config.ServerMode or "Global"
 
   local ok, err = pcall(function()
     -- Try to find all vehicles

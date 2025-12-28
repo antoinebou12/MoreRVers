@@ -136,9 +136,9 @@ local function apply_speed_boost(mod, movementComp, multiplier, isActive)
   return true
 end
 
--- Update speed based on ServerMode (Global = all players, Individual = this player only)
+-- Update speed based on ControlMode (Global = all players, Individual = this player only)
 local function update_player_speeds(mod, multiplier, isActive)
-  local serverMode = mod.Config.ServerMode or "Global"
+  local serverMode = mod.Config.ControlMode or mod.Config.ServerMode or "Global"
 
   local ok, err = pcall(function()
     if serverMode == "Global" then
