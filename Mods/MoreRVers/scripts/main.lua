@@ -254,11 +254,20 @@ local function require_hook(name)
   end
   
   -- Fallback to require with various paths
-  return try_require({
+  local paths = {
     "hooks." .. name,
     "scripts.hooks." .. name,
     "Mods.MoreRVers.scripts.hooks." .. name,
-  })
+  }
+  
+  for _, path in ipairs(paths) do
+    local ok, result = pcall(function() return require(path) end)
+    if ok and result then
+      return result
+    end
+  end
+  
+  return nil
 end
 
 -- Initialization log header
