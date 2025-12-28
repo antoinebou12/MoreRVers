@@ -354,6 +354,58 @@ local function setup_speed_tick(mod, multiplier)
   end
 end
 
+-- Register F4 keybind for speed multiplier control
+local function register_speed_control_keybinds(mod)
+  -- Register F4 to decrease speed multiplier
+  local okF4, errF4 = pcall(function()
+    RegisterKeyBind(Key.F4, function()
+      local current = mod.Config.SpeedMultiplier or 2.0
+      local new = math.max(current - 0.5, 0.5)  -- Decrease by 0.5, minimum 0.5
+      mod.Config.SpeedMultiplier = new
+      
+      -- Update speed immediately if active
+      if mod.update_speed_multiplier then
+        mod.update_speed_multiplier(new)
+      end
+      
+      mod.Log(string.format("Speed Multiplier decreased: %.1fx -> %.1fx", current, new))
+    end)
+    mod.Log("F4 keybind registered: Decrease speed multiplier")
+  end)
+  
+  if not okF4 then
+    mod.Debug("Failed to register F4 keybind: " .. tostring(errF4))
+  end
+  
+  -- Register Shift+F4 to increase speed multiplier
+  local okShiftF4, errShiftF4 = pcall(function()
+    -- Try to register with Shift modifier
+    local okMod, modKey = pcall(function() return ModifierKey.SHIFT end)
+    if okMod and modKey then
+      RegisterKeyBindAsync(Key.F4, {modKey}, function()
+        local current = mod.Config.SpeedMultiplier or 2.0
+        local new = math.min(current + 0.5, 100.0)  -- Increase by 0.5, maximum 100.0
+        mod.Config.SpeedMultiplier = new
+        
+        -- Update speed immediately if active
+        if mod.update_speed_multiplier then
+          mod.update_speed_multiplier(new)
+        end
+        
+        mod.Log(string.format("Speed Multiplier increased: %.1fx -> %.1fx", current, new))
+      end)
+      mod.Log("Shift+F4 keybind registered: Increase speed multiplier")
+    else
+      -- Fallback: Use a different key if modifier doesn't work
+      mod.Debug("Shift modifier not available, using alternative method")
+    end
+  end)
+  
+  if not okShiftF4 then
+    mod.Debug("Failed to register Shift+F4 keybind: " .. tostring(errShiftF4))
+  end
+end
+
 function M.install_hooks(mod)
   -- Check if speed boost is enabled in config
   if not mod.Config.SpeedBoostEnabled then
@@ -368,6 +420,9 @@ function M.install_hooks(mod)
   if multiplier > 5.0 then multiplier = 5.0 end
   
   mod.Log(string.format("Speed boost enabled: multiplier=%.2fx", multiplier))
+  
+  -- Register F4 keybinds for speed control
+  register_speed_control_keybinds(mod)
   
   -- Setup tick-based updates first (needed for toggle mode)
   local timerUpdateFunc = nil

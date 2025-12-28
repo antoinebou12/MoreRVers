@@ -4,14 +4,27 @@
 local UEHelpers = require("UEHelpers")
 
 --[[
-    TODO: Expand on the console command format.
-          You should be able to specify a sub-object, sub-struct, sub-array, sub-map, etc.
-          You do 'dump_object /Engine/Transient.GameEngine_2147482624'.
-          You notice '(ArrayProperty) ShaderComplexityColors=StructProperty ...'.
-          To get the first element, you do: 'dump_object /Engine/Transient.GameEngine_2147482624 ShaderComplexityColors 0'.
-          This will likely see the type-prefix (i.e. UClass /Engine/Script/...) needing to be unsupported just to simplify the code.
-          UPDATE: This is currently working with ArrayProperty and StructProperty.
-                  Need to add support eventually for MapProperty when UE4SS Lua supports MapProperty.
+    Console command format:
+      dump_object <ObjectPath> [PropertyName [Index/Key/PropertyName ...]]
+    
+    Examples:
+      dump_object /Engine/Transient.GameEngine_2147482624
+      dump_object /Engine/Transient.GameEngine_2147482624 ShaderComplexityColors
+      dump_object /Engine/Transient.GameEngine_2147482624 ShaderComplexityColors 0
+      dump_object <ObjectPath> <StructProperty> <NestedProperty>
+    
+    Supported features:
+      ✓ ArrayProperty: Access elements by index (e.g., PropertyName 0)
+      ✓ StructProperty: Navigate into nested struct properties
+      ✓ ObjectProperty: Navigate into referenced objects
+      ✓ WeakObjectProperty: Navigate into weak object references
+      ✓ MapProperty: Partial support (shows type info, key lookup pending UE4SS API)
+      ✓ Circular reference detection (prevents infinite loops)
+      ✓ Depth limiting (max 32 levels to prevent stack overflow)
+    
+    Limitations:
+      - MapProperty key lookup requires full UE4SS MapProperty API support
+      - Type-prefix parsing (UClass /Engine/Script/...) not implemented (uses full paths)
 ]]
 
 string.padleft = function(InString, Length, PadWithChar)
@@ -91,7 +104,26 @@ DumpPropertyWithinObject = function(Object, Property, DumpRecursively)
             end
         end
     elseif Property:IsA(PropertyTypes.MapProperty) then
-        ValueStr = "UNHANDLED_VALUE"
+        local Value = Object[Property:GetFName():ToString()]
+        if Value then
+            -- Try to get key and value property types if available
+            local KeyProp, ValueProp = nil, nil
+            local success, result = pcall(function()
+                KeyProp = Property:GetKeyProp()
+                ValueProp = Property:GetValueProp()
+            end)
+            if success and KeyProp and ValueProp then
+                local KeyType = KeyProp:GetFullName()
+                local ValueType = ValueProp:GetFullName()
+                ValueStr = string.format("TMap<%s, %s>", KeyType, ValueType)
+                -- TODO: Show map size and contents when MapProperty API is fully available
+                -- This would require methods like GetMapSize(), Find(), ForEach(), etc.
+            else
+                ValueStr = "TMap<?, ?> (MapProperty API not fully available)"
+            end
+        else
+            ValueStr = "null"
+        end
     elseif Property:IsA(PropertyTypes.StructProperty) then
         local Value = Object[Property:GetFName():ToString()]
         ValueStr = string.format("%s", Value:GetFullName())
@@ -102,8 +134,16 @@ DumpPropertyWithinObject = function(Object, Property, DumpRecursively)
         local Value = Object[Property:GetFName():ToString()]
         ValueStr = string.format("%s", Value:GetFullName())
     elseif Property:IsA(PropertyTypes.WeakObjectProperty) then
-        --local Value = Object[Property:GetFName():ToString()]
-        ValueStr = "UNHANDLED_VALUE"
+        local Value = Object[Property:GetFName():ToString()]
+        if Value and Value:IsValid() then
+            if DumpRecursively then
+                DumpObject(Value)
+            else
+                ValueStr = string.format("%s (WeakPtr)", Value:GetFullName())
+            end
+        else
+            ValueStr = "null (WeakPtr)"
+        end
     elseif Property:IsA(PropertyTypes.EnumProperty) then
         local Value = Object[Property:GetFName():ToString()]
         ValueStr = string.format("%s(%s)", Property:GetEnum():GetNameByValue(Value):ToString(), Value)
@@ -228,18 +268,29 @@ local State = {
 local ObjectContext = nil
 local PropertyContext = nil
 local CurrentState = State.StoreObjectContext
+local MaxDepth = 32  -- Maximum nesting depth to prevent infinite recursion
+local CurrentDepth = 0
+local VisitedObjects = {}  -- Track visited objects for circular reference detection
 
 function ExecStateMachine(Param)
+    -- Check depth limit
+    if CurrentDepth >= MaxDepth then
+        Log(string.format("Maximum nesting depth (%i) exceeded. Possible circular reference or too deep nesting.", MaxDepth))
+        return true
+    end
+    
     if CurrentState == State.StoreObjectContext then
         if not Param or Param == "" or Param == " " then
-            Log("No object name supplied")
+            Log("Error: No object name supplied")
             return true
         else
             ObjectContext = GetObjectByName(Param)
             if (ObjectContext:IsA(UScriptStructStaticClass)) or (ObjectContext and ObjectContext:IsValid()) then
                 CurrentState = State.FindProperty
+                CurrentDepth = 1
+                VisitedObjects = {}  -- Reset visited objects for new dump
             else
-                Log(string.format("No class found with name %s", Param))
+                Log(string.format("Error: No object found with name '%s'. Check the object path is correct.", Param))
                 return true
             end
         end
@@ -252,29 +303,92 @@ function ExecStateMachine(Param)
             end
             CurrentState = State.FoundProperty
         else
-            Log(string.format("Property '%s' not found in '%s'", Param, ObjectContext:GetFullName()))
+            Log(string.format("Error: Property '%s' not found in '%s'. Available properties can be listed by dumping the object without property name.", Param, ObjectContext:GetFullName()))
             return true
         end
     elseif CurrentState == State.FoundProperty then
         if PropertyContext:IsA(PropertyTypes.ArrayProperty) then
+            local ArrayPropertyName = PropertyContext:GetFName():ToString()
             PropertyContext = PropertyContext:GetInner()
-            ObjectContext = ObjectContext[PropertyContext:GetFName():ToString()]
+            local ArrayValue = ObjectContext[ArrayPropertyName]
+            
+            if not ArrayValue then
+                Log(string.format("Error: Failed to access array property '%s' in '%s'", ArrayPropertyName, ObjectContext:GetFullName()))
+                return true
+            end
 
             local ArrayIndex = tonumber(Param)
             if not ArrayIndex then
-                Log(string.format("Value '%s' is not a valid array index", Param))
+                Log(string.format("Error: '%s' is not a valid array index. Expected a numeric value.", Param))
                 return true
-            elseif ObjectContext:GetArrayNum() < ArrayIndex + 1 then
-                Log(string.format("Array index '%i' out of bounds.", ArrayIndex))
+            elseif ArrayIndex < 0 then
+                Log(string.format("Error: Array index '%i' is negative. Array indices start at 0.", ArrayIndex))
+                return true
+            elseif ArrayValue:GetArrayNum() <= ArrayIndex then
+                Log(string.format("Error: Array index '%i' out of bounds. Array has %i element(s) (indices 0-%i).", ArrayIndex, ArrayValue:GetArrayNum(), math.max(0, ArrayValue:GetArrayNum() - 1)))
                 return true
             else
-                ObjectContext = ObjectContext[ArrayIndex + 1]
+                ObjectContext = ArrayValue[ArrayIndex + 1]
+                CurrentDepth = CurrentDepth + 1
+                
+                -- Check for circular reference
+                local ObjectId = tostring(ObjectContext)
+                if VisitedObjects[ObjectId] then
+                    Log(string.format("Warning: Circular reference detected at depth %i. Object already visited: %s", CurrentDepth, ObjectContext:GetFullName()))
+                    return true
+                end
+                VisitedObjects[ObjectId] = true
+                
                 CurrentState = State.FindProperty
                 return false
             end
+        elseif PropertyContext:IsA(PropertyTypes.MapProperty) then
+            -- MapProperty support
+            local MapPropertyName = PropertyContext:GetFName():ToString()
+            local MapValue = ObjectContext[MapPropertyName]
+            
+            if not MapValue then
+                Log(string.format("Error: Failed to access map property '%s' in '%s'", MapPropertyName, ObjectContext:GetFullName()))
+                return true
+            end
+            
+            -- Try to find the key in the map
+            -- Note: This is a placeholder implementation - actual MapProperty API may differ
+            -- MapProperty typically needs key lookup which might not be available in UE4SS Lua yet
+            Log(string.format("Error: MapProperty lookup not fully supported yet. Map '%s' exists but key '%s' lookup requires UE4SS MapProperty API support.", MapPropertyName, Param))
+            return true
         end
 
-        ObjectContext = ObjectContext[PropertyContext:GetFName():ToString()]
+        -- Handle StructProperty, ObjectProperty, and other navigable properties
+        local PropertyName = PropertyContext:GetFName():ToString()
+        local NewObjectContext = ObjectContext[PropertyName]
+        
+        if not NewObjectContext then
+            Log(string.format("Error: Failed to access property '%s' in '%s'. Property may be null or inaccessible.", PropertyName, ObjectContext:GetFullName()))
+            return true
+        end
+        
+        -- For ObjectProperty, check if the object is valid
+        if PropertyContext:IsA(PropertyTypes.ObjectProperty) or PropertyContext:IsA(PropertyTypes.WeakObjectProperty) then
+            if not NewObjectContext:IsValid() then
+                Log(string.format("Error: Property '%s' references an invalid/null object in '%s'", PropertyName, ObjectContext:GetFullName()))
+                return true
+            end
+        end
+        
+        ObjectContext = NewObjectContext
+        CurrentDepth = CurrentDepth + 1
+        
+        -- Check for circular reference (only for ObjectProperty types)
+        if PropertyContext:IsA(PropertyTypes.ObjectProperty) or PropertyContext:IsA(PropertyTypes.WeakObjectProperty) then
+            local ObjectId = tostring(ObjectContext)
+            if VisitedObjects[ObjectId] then
+                Log(string.format("Warning: Circular reference detected at depth %i. Object already visited: %s", CurrentDepth, ObjectContext:GetFullName()))
+                return true
+            end
+            VisitedObjects[ObjectId] = true
+        end
+        
         CurrentState = State.FindProperty
         return ExecStateMachine(Param)
     end
@@ -284,6 +398,8 @@ RegisterConsoleCommandHandler("dump_object", function(FullCommand, Parameters, A
     ObjectContext = nil
     PropertyContext = nil
     CurrentState = State.StoreObjectContext
+    CurrentDepth = 0
+    VisitedObjects = {}
 
     if #Parameters < 1 then return false end
     local ShouldSaveToFile = Parameters[1]:find(".txt")

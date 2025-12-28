@@ -175,6 +175,62 @@ local function parse_ini(filepath)
           config.ServerMode = config.ControlMode
         end
       end
+      
+      -- Parse FallDamage settings (only in [FallDamage] section)
+      if currentSection == "FallDamage" then
+        -- Parse FallDamageEnabled (boolean: 1/0, true/false)
+        if key == "FallDamageEnabled" then
+          local boolVal = nil
+          if value == "1" or value:lower() == "true" then
+            boolVal = true
+          elseif value == "0" or value:lower() == "false" then
+            boolVal = false
+          end
+          if boolVal ~= nil then
+            config.FallDamageEnabled = boolVal
+          end
+        end
+      end
+      
+      -- Parse GearHotkeys settings (only in [GearHotkeys] section)
+      if currentSection == "GearHotkeys" then
+        -- Parse GearHotkeysEnabled (boolean: 1/0, true/false)
+        if key == "GearHotkeysEnabled" then
+          local boolVal = nil
+          if value == "1" or value:lower() == "true" then
+            boolVal = true
+          elseif value == "0" or value:lower() == "false" then
+            boolVal = false
+          end
+          if boolVal ~= nil then
+            config.GearHotkeysEnabled = boolVal
+          end
+        end
+        
+        -- Parse SequentialLinking (boolean: 1/0, true/false)
+        if key == "SequentialLinking" then
+          local boolVal = nil
+          if value == "1" or value:lower() == "true" then
+            boolVal = true
+          elseif value == "0" or value:lower() == "false" then
+            boolVal = false
+          end
+          if boolVal ~= nil then
+            config.SequentialLinking = boolVal
+          end
+        end
+        
+        -- Parse gear keybinds
+        if key == "Gear1Key" then config.Gear1Key = value end
+        if key == "Gear2Key" then config.Gear2Key = value end
+        if key == "Gear3Key" then config.Gear3Key = value end
+        if key == "Gear4Key" then config.Gear4Key = value end
+        if key == "Gear5Key" then config.Gear5Key = value end
+        if key == "ReverseKey" then config.ReverseKey = value end
+        if key == "NeutralKey" then config.NeutralKey = value end
+        if key == "ShiftUpKey" then config.ShiftUpKey = value end
+        if key == "ShiftDownKey" then config.ShiftDownKey = value end
+      end
     end
 
     ::continue::
@@ -209,7 +265,19 @@ if ModPath then
       VehicleSpeedEnabled = parsedConfig.VehicleSpeedEnabled ~= nil and parsedConfig.VehicleSpeedEnabled or true,  -- ENABLED by default
       VehicleSpeedMultiplier = parsedConfig.VehicleSpeedMultiplier or 2.0,
       VehicleKeybind = parsedConfig.VehicleKeybind or "F8",
-      MenuKeybind = parsedConfig.MenuKeybind or "F7"
+      MenuKeybind = parsedConfig.MenuKeybind or "F7",
+      FallDamageEnabled = parsedConfig.FallDamageEnabled ~= nil and parsedConfig.FallDamageEnabled or true,  -- ENABLED by default
+      GearHotkeysEnabled = parsedConfig.GearHotkeysEnabled ~= nil and parsedConfig.GearHotkeysEnabled or true,  -- ENABLED by default
+      SequentialLinking = parsedConfig.SequentialLinking ~= nil and parsedConfig.SequentialLinking or true,  -- ENABLED by default
+      Gear1Key = parsedConfig.Gear1Key or "NUM_ONE",
+      Gear2Key = parsedConfig.Gear2Key or "NUM_TWO",
+      Gear3Key = parsedConfig.Gear3Key or "NUM_THREE",
+      Gear4Key = parsedConfig.Gear4Key or "NUM_FOUR",
+      Gear5Key = parsedConfig.Gear5Key or "NUM_FIVE",
+      ReverseKey = parsedConfig.ReverseKey or "NUM_ZERO",
+      NeutralKey = parsedConfig.NeutralKey or "NUM_SIX",
+      ShiftUpKey = parsedConfig.ShiftUpKey or "UP_ARROW",
+      ShiftDownKey = parsedConfig.ShiftDownKey or "DOWN_ARROW"
     }
   end
 end
@@ -233,7 +301,19 @@ MoreRVers.Config = configLoaded or {
   VehicleSpeedEnabled = true,  -- ENABLED by default
   VehicleSpeedMultiplier = 2.0,
   VehicleKeybind = "F8",
-  MenuKeybind = "F7"
+  MenuKeybind = "F7",
+  FallDamageEnabled = true,  -- ENABLED by default
+  GearHotkeysEnabled = true,  -- ENABLED by default
+  SequentialLinking = true,  -- ENABLED by default (arcade mode)
+  Gear1Key = "NUM_ONE",
+  Gear2Key = "NUM_TWO",
+  Gear3Key = "NUM_THREE",
+  Gear4Key = "NUM_FOUR",
+  Gear5Key = "NUM_FIVE",
+  ReverseKey = "NUM_ZERO",
+  NeutralKey = "NUM_SIX",
+  ShiftUpKey = "UP_ARROW",
+  ShiftDownKey = "DOWN_ARROW"
 }
 
 -- Logging utilities with levels and timestamps
@@ -558,9 +638,17 @@ local instant_heal = nil
 if MoreRVers.Config.InstantHealEnabled then
   instant_heal = require_hook("instant_heal")
 end
+local fall_damage = nil
+if MoreRVers.Config.FallDamageEnabled then
+  fall_damage = require_hook("fall_damage")
+end
 local vehicle_speed = nil
 if MoreRVers.Config.VehicleSpeedEnabled then
   vehicle_speed = require_hook("vehicle_speed")
+end
+local gear_hotkeys = nil
+if MoreRVers.Config.GearHotkeysEnabled then
+  gear_hotkeys = require_hook("gear_hotkeys")
 end
 local menu = require_hook("menu")
 local ui_helpers = nil
@@ -676,6 +764,21 @@ if instant_heal then
   end
 end
 
+if fall_damage then
+  local ok, err = pcall(function()
+    fall_damage.install_hooks(MoreRVers)
+    -- Store update callbacks for menu system (wrapped to pass mod)
+    if fall_damage.update_active then
+      MoreRVers.update_fall_damage = function(isActive)
+        fall_damage.update_active(MoreRVers, isActive)
+      end
+    end
+  end)
+  if not ok then
+    MoreRVers.Warn("Fall damage hook failed to load (non-fatal): " .. tostring(err))
+  end
+end
+
 if vehicle_speed then
   local ok, err = pcall(function()
     vehicle_speed.install_hooks(MoreRVers)
@@ -693,6 +796,15 @@ if vehicle_speed then
   end)
   if not ok then
     MoreRVers.Warn("Vehicle speed hook failed to load (non-fatal): " .. tostring(err))
+  end
+end
+
+if gear_hotkeys then
+  local ok, err = pcall(function()
+    gear_hotkeys.install_hooks(MoreRVers)
+  end)
+  if not ok then
+    MoreRVers.Warn("Gear hotkeys hook failed to load (non-fatal): " .. tostring(err))
   end
 end
 

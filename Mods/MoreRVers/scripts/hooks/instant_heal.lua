@@ -8,7 +8,7 @@ local M = {}
 
 local UEHelpers = require("UEHelpers")
 
--- Get health component from pawn/character
+-- Get health component from pawn/character (improved detection)
 local function get_health_component(pawn, mod)
   if not pawn or not pawn:IsValid() then
     if mod then mod.Debug("get_health_component: pawn invalid") end
@@ -19,7 +19,7 @@ local function get_health_component(pawn, mod)
 
   -- Try multiple approaches to find health component
   local ok, healthComp = pcall(function()
-    -- Approach 1: Direct property access
+    -- Approach 1: Direct property access (most common)
     if pawn.HealthComponent then
       local isValid = true
       local okCheck = pcall(function() isValid = pawn.HealthComponent:IsValid() end)
@@ -36,7 +36,7 @@ local function get_health_component(pawn, mod)
       return pawn  -- Return pawn itself if Health is a direct property
     end
     
-    -- Approach 3: GetComponentByClass for health-related components
+    -- Approach 3: Try GetComponentByClass for health-related components
     if pawn.GetComponentByClass then
       -- Try common health component class names
       local healthClasses = {
@@ -53,7 +53,9 @@ local function get_health_component(pawn, mod)
             -- Check if it has health-related properties
             local hasHealth = false
             local checkOk = pcall(function()
-              hasHealth = (comp.Health ~= nil) or (comp.CurrentHealth ~= nil) or (comp.GetHealth ~= nil)
+              hasHealth = (comp.Health ~= nil) or (comp.CurrentHealth ~= nil) or 
+                         (comp.GetHealth ~= nil) or (comp.MaxHealth ~= nil) or
+                         (comp.HealthMax ~= nil) or (comp.GetMaxHealth ~= nil)
             end)
             if checkOk and hasHealth then
               if mod then mod.Debug("Found health component via GetComponentByClass: " .. className) end
@@ -64,7 +66,7 @@ local function get_health_component(pawn, mod)
       end
     end
     
-    -- Approach 4: Try GetComponentsByClass
+    -- Approach 4: Try GetComponentsByClass and search all components
     if pawn.GetComponentsByClass then
       local compsOk, comps = pcall(function() return pawn:GetComponentsByClass("/Script/Engine.ActorComponent") end)
       if compsOk and comps then
@@ -73,13 +75,28 @@ local function get_health_component(pawn, mod)
           if compValidOk and compValid then
             local hasHealth = false
             local checkOk = pcall(function()
-              hasHealth = (comp.Health ~= nil) or (comp.CurrentHealth ~= nil) or (comp.GetHealth ~= nil)
+              hasHealth = (comp.Health ~= nil) or (comp.CurrentHealth ~= nil) or 
+                         (comp.GetHealth ~= nil) or (comp.MaxHealth ~= nil) or
+                         (comp.HealthMax ~= nil) or (comp.GetMaxHealth ~= nil) or
+                         (comp.Heal ~= nil) or (comp.AddHealth ~= nil)
             end)
             if checkOk and hasHealth then
               if mod then mod.Debug("Found health component via GetComponentsByClass") end
               return comp
             end
           end
+        end
+      end
+    end
+    
+    -- Approach 5: Try GetComponentByTag (some games use tags)
+    if pawn.GetComponentByTag then
+      local tagOk, taggedComp = pcall(function() return pawn:GetComponentByTag("Health") end)
+      if tagOk and taggedComp then
+        local compValidOk, compValid = pcall(function() return taggedComp:IsValid() end)
+        if compValidOk and compValid then
+          if mod then mod.Debug("Found health component via GetComponentByTag") end
+          return taggedComp
         end
       end
     end
@@ -374,9 +391,30 @@ local function hook_damage_event(mod)
         
         if not isPawn then return end
 
+        -- Check if we're in single-player mode first
+        local isSinglePlayer = false
+        local okSP, resultSP = pcall(function()
+          local World = UEHelpers.GetWorld()
+          if World and World:IsValid() and World.GetNetMode then
+            local netMode = World:GetNetMode()
+            if netMode == 0 then  -- NM_Standalone
+              return true
+            end
+          end
+          return false
+        end)
+        if okSP and resultSP then
+          isSinglePlayer = true
+        end
+        
         -- Check ControlMode to determine who gets healed
         local serverMode = mod.Config.ControlMode or mod.Config.ServerMode or "Global"
-        if serverMode == "Individual" then
+        if isSinglePlayer then
+          -- Single-player: Always allow healing
+          if not is_player_pawn(self, mod) then
+            return
+          end
+        elseif serverMode == "Individual" then
           -- Individual mode: Only heal this player's pawn
           if not is_player_pawn(self, mod) then
             return

@@ -17,6 +17,7 @@ This mod patches the game's multiplayer cap at runtime, allowing you to host ses
 ## Features
 
 - **Simple Configuration** - INI file configuration for all features
+- **Console Commands** - Comprehensive runtime control via UE4SS console (no restart required)
 - **Host-Only Requirement** - Clients do not require mod installation
 - **Non-Destructive** - No permanent game file modifications
 - **Flexible Limits** - Configurable player count from 1-24
@@ -26,6 +27,8 @@ This mod patches the game's multiplayer cap at runtime, allowing you to host ses
 - **Instant Heal** - Automatically restore health to full when it drops below a threshold (enabled by default)
 - **Enhanced Throw Distance** - Configurable multiplier for player throw distance on damage/death
 - **Speed Boost** - Configurable movement speed multiplier with optional toggle keybind (enabled by default)
+- **Vehicle Speed Boost** - Configurable vehicle speed multiplier with optional toggle keybind
+- **Fall Damage Removal** - Option to disable fall damage for all players
 
 ## Installation
 
@@ -210,6 +213,101 @@ InstantHealThreshold = 0.10
   - **Individual mode**: Each player's heal works independently
 
 The game must be restarted for configuration changes to take effect.
+
+## Console Commands
+
+MoreRVers provides comprehensive console commands for runtime control of all features. These commands take effect immediately without requiring a game restart.
+
+### Opening the Console
+
+Open the UE4SS console (usually with `~` or `` ` `` key, or check your UE4SS settings).
+
+### Command Categories
+
+#### Speed Boost Commands
+- `MoreRVers.SetSpeed <value>` - Set speed multiplier (range: 0.5-100)
+  - Example: `MoreRVers.SetSpeed 50`
+- `MoreRVers.GetSpeed` - Display current speed boost settings
+- `MoreRVers.ToggleSpeed` - Toggle speed boost on/off
+
+#### Vehicle Speed Commands
+- `MoreRVers.SetVehicle <value>` - Set vehicle speed multiplier (range: 0.5-100)
+  - Example: `MoreRVers.SetVehicle 20`
+- `MoreRVers.GetVehicle` - Display current vehicle speed settings
+- `MoreRVers.ToggleVehicle` - Toggle vehicle speed boost on/off
+
+#### Fall Damage Commands
+- `MoreRVers.SetFallDamage <0|1>` - Enable/disable fall damage removal
+  - `0` = disabled (normal fall damage), `1` = enabled (no fall damage)
+  - Also accepts: `true`/`false`, `on`/`off`, `yes`/`no`, `enabled`/`disabled`
+  - Example: `MoreRVers.SetFallDamage 1`
+- `MoreRVers.GetFallDamage` - Display fall damage removal status
+- `MoreRVers.ToggleFallDamage` - Toggle fall damage removal
+
+#### Revive Commands
+- `MoreRVers.SetRevive <0|1>` - Enable/disable revive feature
+  - `0` = disabled, `1` = enabled
+  - Also accepts: `true`/`false`, `on`/`off`, `yes`/`no`, `enabled`/`disabled`
+  - Example: `MoreRVers.SetRevive 1`
+- `MoreRVers.GetRevive` - Display revive feature status (includes keybind)
+- `MoreRVers.ToggleRevive` - Toggle revive feature
+
+#### Throw Distance Commands
+- `MoreRVers.SetThrow <value>` - Set throw distance multiplier (range: 0.1-10.0)
+  - Example: `MoreRVers.SetThrow 2.5`
+- `MoreRVers.GetThrow` - Display current throw distance settings
+- `MoreRVers.ToggleThrow` - Toggle between 1.0x (normal) and 2.0x (double)
+
+#### Instant Heal Commands
+- `MoreRVers.SetHeal <0|1>` - Enable/disable instant heal
+  - `0` = disabled, `1` = enabled
+  - Also accepts: `true`/`false`, `on`/`off`, `yes`/`no`, `enabled`/`disabled`
+  - Example: `MoreRVers.SetHeal 1`
+- `MoreRVers.SetHealThreshold <value>` - Set health threshold for auto-heal (range: 0.01-0.99)
+  - `0.10` = 10% health, `0.25` = 25% health, etc.
+  - Example: `MoreRVers.SetHealThreshold 0.15` (heal at 15% health)
+- `MoreRVers.GetHeal` - Display instant heal settings (enabled status and threshold)
+- `MoreRVers.GetHealThreshold` - Display current heal threshold
+- `MoreRVers.ToggleHeal` - Toggle instant heal on/off
+
+#### Utility Commands
+- `MoreRVers.ToggleMode` - Toggle between Global and Individual control modes
+- `MoreRVers.Enable <feature>` - Enable a feature by name
+  - Valid features: `speed`, `vehicle`, `heal`, `throw`, `falldamage`, `revive`
+  - Example: `MoreRVers.Enable speed`
+- `MoreRVers.Disable <feature>` - Disable a feature by name
+  - Valid features: `speed`, `vehicle`, `heal`, `throw`, `falldamage`, `revive`
+  - Example: `MoreRVers.Disable falldamage`
+- `MoreRVers.Status` - Display all current settings at once
+- `MoreRVers.Help` - Show complete command list with usage examples
+
+### Usage Examples
+
+```
+MoreRVers.SetSpeed 50              # Set speed multiplier to 50x
+MoreRVers.SetVehicle 10            # Set vehicle multiplier to 10x
+MoreRVers.SetFallDamage 1          # Enable fall damage removal
+MoreRVers.SetRevive true           # Enable revive feature
+MoreRVers.SetThrow 2.5             # Set throw distance to 2.5x
+MoreRVers.SetHealThreshold 0.15    # Heal when health drops below 15%
+MoreRVers.ToggleSpeed              # Toggle speed boost
+MoreRVers.Status                   # Show all current settings
+MoreRVers.Help                     # Show command list
+```
+
+### Boolean Value Formats
+
+Commands that accept boolean values (enable/disable) accept multiple formats:
+- Numeric: `0` (disabled) or `1` (enabled)
+- Text: `true`/`false`, `on`/`off`, `yes`/`no`, `enabled`/`disabled`
+- Case-insensitive
+
+### Command Behavior
+
+- All commands take effect **immediately** without restarting the game
+- Commands validate input ranges and provide helpful error messages
+- Settings changed via console commands persist for the current game session
+- Console command changes do not modify the `config.ini` file (config file changes require game restart)
 
 ## Verification
 
