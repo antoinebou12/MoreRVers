@@ -9,6 +9,7 @@ local UEHelpers = require("UEHelpers")
 
 -- Attempt to revive/respawn the local player only (server-safe)
 local function revive_player(mod)
+  mod.Log("=== REVIVE ATTEMPT INITIATED ===")
   mod.Debug("Revive attempt initiated")
   
   local ok, err = pcall(function()
@@ -16,9 +17,11 @@ local function revive_player(mod)
     local PlayerController = UEHelpers.GetPlayerController()
     if not PlayerController or not PlayerController:IsValid() then
       mod.Warn("No valid PlayerController found for revive")
+      mod.Log("REVIVE FAILED: No PlayerController")
       return false
     end
-    mod.Debug("PlayerController found and valid")
+    mod.Debug("PlayerController found and valid: " .. tostring(PlayerController))
+    mod.Log("PlayerController found: " .. tostring(PlayerController))
 
     -- Verify this is the local player's controller (server-safe check)
     if PlayerController.IsLocalPlayerController then
@@ -168,10 +171,12 @@ local function revive_player(mod)
 
     if not revived then
       mod.Warn("Could not revive player - all revive methods failed. Check console for debug details.")
+      mod.Log("REVIVE FAILED: All methods failed")
       return false
     end
 
     mod.Debug("Revive completed successfully using method: " .. methodUsed)
+    mod.Log("REVIVE SUCCESS: Used method " .. methodUsed)
     return true
   end)
 

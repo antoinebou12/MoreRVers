@@ -14,84 +14,104 @@ local speedBoostActive = false
 local toggleKeyPressed = false
 
 -- Get character movement component from pawn
-local function get_character_movement(pawn)
+local function get_character_movement(pawn, mod)
   if not pawn or not pawn:IsValid() then
+    if mod then mod.Debug("get_character_movement: pawn invalid") end
     return nil
   end
-  
+
+  if mod then mod.Debug("Attempting to get CharacterMovementComponent from pawn: " .. tostring(pawn)) end
+
   -- Try to get CharacterMovementComponent
   local ok, movementComp = pcall(function()
     -- Standard UE4/UE5 Character has CharacterMovement property
     if pawn.CharacterMovement and pawn.CharacterMovement:IsValid() then
+      if mod then mod.Debug("Found CharacterMovement via direct property access") end
       return pawn.CharacterMovement
     end
     
     -- Alternative: Try to find component by class
     if pawn.GetComponentsByClass then
+      if mod then mod.Debug("Trying GetComponentsByClass for CharacterMovementComponent") end
       local comps = pawn:GetComponentsByClass("/Script/Engine.CharacterMovementComponent")
       if comps and #comps > 0 then
+        if mod then mod.Debug("Found CharacterMovementComponent via GetComponentsByClass") end
         return comps[1]
       end
     end
-    
+
     -- Try GetComponentByClass
     if pawn.GetComponentByClass then
+      if mod then mod.Debug("Trying GetComponentByClass for CharacterMovementComponent") end
       local comp = pawn:GetComponentByClass("/Script/Engine.CharacterMovementComponent")
       if comp and comp:IsValid() then
+        if mod then mod.Debug("Found CharacterMovementComponent via GetComponentByClass") end
         return comp
       end
     end
-    
+
     return nil
   end)
-  
+
   if ok and movementComp then
+    if mod then mod.Debug("CharacterMovementComponent found successfully: " .. tostring(movementComp)) end
     return movementComp
   end
-  
+
+  if mod then mod.Debug("Failed to find CharacterMovementComponent") end
   return nil
 end
 
 -- Apply speed multiplier to movement component
 local function apply_speed_boost(mod, movementComp, multiplier, isActive)
   if not movementComp or not movementComp:IsValid() then
+    if mod then mod.Debug("apply_speed_boost: movement component invalid") end
     return false
   end
-  
+
+  mod.Debug(string.format("Applying speed boost: multiplier=%.1fx, active=%s", multiplier, tostring(isActive)))
+
   local ok, err = pcall(function()
     -- Get component ID for tracking original speed
     local compId = tostring(movementComp)
-    
+
     -- Store original speed if not already stored
     if not originalSpeeds[compId] then
       if movementComp.MaxWalkSpeed then
         originalSpeeds[compId] = movementComp.MaxWalkSpeed
+        mod.Debug(string.format("Stored original MaxWalkSpeed: %.1f", originalSpeeds[compId]))
       else
         -- Try alternative speed properties
         if movementComp.MaxSpeed then
           originalSpeeds[compId] = movementComp.MaxSpeed
+          mod.Debug(string.format("Stored original MaxSpeed: %.1f", originalSpeeds[compId]))
         else
           -- Default fallback
           originalSpeeds[compId] = 600.0
+          mod.Debug("Using default original speed: 600.0")
         end
       end
     end
-    
+
     local originalSpeed = originalSpeeds[compId]
     local newSpeed = originalSpeed
-    
+
     -- Apply multiplier if active
     if isActive then
       newSpeed = originalSpeed * multiplier
     end
-    
+
     -- Apply the speed change
     if movementComp.MaxWalkSpeed ~= nil then
       movementComp.MaxWalkSpeed = newSpeed
+      mod.Log(string.format("Speed modified: MaxWalkSpeed %.1f -> %.1f (%.1fx)",
+        originalSpeed, newSpeed, multiplier))
     elseif movementComp.MaxSpeed ~= nil then
       movementComp.MaxSpeed = newSpeed
+      mod.Log(string.format("Speed modified: MaxSpeed %.1f -> %.1f (%.1fx)",
+        originalSpeed, newSpeed, multiplier))
     end
-    
+
     return true
   end)
   
@@ -103,21 +123,18 @@ local function apply_speed_boost(mod, movementComp, multiplier, isActive)
   return true
 end
 
--- Update speed for local player only (server-safe)
+-- Update speed for the player who pressed the keybind (works for all players)
 local function update_player_speeds(mod, multiplier, isActive)
   local ok, err = pcall(function()
-    -- Get the local player's controller only
+    -- Get the player controller (works for all players, each controls their own)
     local PlayerController = UEHelpers.GetPlayerController()
     if not PlayerController or not PlayerController:IsValid() then
+      mod.Debug("No valid PlayerController found for speed boost")
       return false
     end
-    
-    -- Verify this is the local player's controller (server-safe check)
-    if PlayerController.IsLocalPlayerController and not PlayerController:IsLocalPlayerController() then
-      mod.Debug("PlayerController is not local - cannot modify speed for other players")
-      return false
-    end
-    
+
+    mod.Debug("PlayerController found - applying speed boost")
+
     -- Get pawn from controller
     local pawn = nil
     local okPawn, pawnResult = pcall(function()
@@ -126,20 +143,25 @@ local function update_player_speeds(mod, multiplier, isActive)
       end
       return nil
     end)
-    
+
     if okPawn and pawnResult then
       pawn = pawnResult
     end
-    
+
     if not pawn then
+      mod.Debug("No pawn found for player")
       return false
     end
-    
-    -- Get movement component and apply speed (only to local player)
-    local movementComp = get_character_movement(pawn)
+
+    mod.Debug("Found player pawn: " .. tostring(pawn))
+
+    -- Get movement component and apply speed
+    local movementComp = get_character_movement(pawn, mod)
     if movementComp then
       apply_speed_boost(mod, movementComp, multiplier, isActive)
       return true
+    else
+      mod.Debug("Could not find movement component for player pawn")
     end
     
     return false
@@ -168,20 +190,20 @@ local function hook_pawn_creation(mod, multiplier)
         if not self or not self:IsValid() then return end
         if not InPawn or not InPawn:IsValid() then return end
         
-        -- Only apply speed to local player's pawn (server-safe)
-        if self.IsLocalPlayerController and not self:IsLocalPlayerController() then
-          return -- Skip non-local players
-        end
-        
+        mod.Debug("Player possessed pawn: " .. tostring(InPawn))
+
         -- Wait a frame for component initialization
         ExecuteInGameThread(function()
-          local movementComp = get_character_movement(InPawn)
+          local movementComp = get_character_movement(InPawn, mod)
           if movementComp then
             local isActive = true
             if mod.Config.SpeedKeybind and mod.Config.SpeedKeybind ~= "" then
               isActive = toggleKeyPressed
             end
+            mod.Debug(string.format("Applying speed on pawn possession: active=%s", tostring(isActive)))
             apply_speed_boost(mod, movementComp, multiplier, isActive)
+          else
+            mod.Debug("Could not find movement component on possessed pawn")
           end
         end)
       end)
@@ -215,11 +237,12 @@ local function setup_speed_tick(mod, multiplier)
   local lastUpdate = 0
   local updateInterval = 0.05 -- Update every 50ms for responsive feel
   
-  local function speed_tick()
+    local function speed_tick()
     local currentTime = os.clock()
     
     -- Check if toggle should reset (key not held)
     if toggleKeyPressed and (currentTime - toggleResetTimer) > toggleResetInterval then
+      mod.Debug("Speed boost timer expired - deactivating speed")
       toggleKeyPressed = false
     end
     
@@ -230,7 +253,10 @@ local function setup_speed_tick(mod, multiplier)
     
     ExecuteInGameThread(function()
       -- Update speeds based on toggle state
-      update_player_speeds(mod, multiplier, toggleKeyPressed)
+      local success = update_player_speeds(mod, multiplier, toggleKeyPressed)
+      if not success and toggleKeyPressed then
+        mod.Debug("Speed boost update failed in tick")
+      end
     end)
   end
   
@@ -282,7 +308,7 @@ function M.install_hooks(mod)
   if multiplier < 0.5 then multiplier = 0.5 end
   if multiplier > 5.0 then multiplier = 5.0 end
   
-  mod.Log(string.format("Speed boost multiplier: %.2f", multiplier))
+  mod.Log(string.format("Speed boost enabled: multiplier=%.2fx", multiplier))
   
   -- Setup tick-based updates first (needed for toggle mode)
   local timerUpdateFunc = nil
@@ -318,15 +344,23 @@ function M.install_hooks(mod)
     end
 
     -- Register keybind for toggle (hold to activate)
+    mod.Debug("Registering speed boost toggle keybind: " .. keybindString)
     local ok, err = pcall(function()
       -- Register key press - refreshes timer to keep speed active
       RegisterKeyBind(keybind, function()
+        mod.Debug("Speed boost keybind pressed - activating speed")
         toggleKeyPressed = true
         if timerUpdateFunc then
           timerUpdateFunc() -- Refresh the timer
+          mod.Debug("Timer refreshed for speed boost")
         end
         ExecuteInGameThread(function()
-          update_player_speeds(mod, multiplier, true)
+          local success = update_player_speeds(mod, multiplier, true)
+          if success then
+            mod.Debug("Speed boost activated successfully")
+          else
+            mod.Debug("Speed boost activation failed")
+          end
         end)
       end)
 
@@ -335,6 +369,7 @@ function M.install_hooks(mod)
       else
         mod.Log("Speed boost toggle keybind registered: " .. actualKeyName .. " (hold to activate)")
       end
+      mod.Debug("Speed boost keybind registration successful")
     end)
     
     if not ok then
@@ -363,6 +398,24 @@ function M.install_hooks(mod)
   end
   
   return true
+end
+
+-- Export update functions for menu system
+function M.update_active(mod, isActive)
+  speedBoostActive = isActive
+  local multiplier = mod.Config.SpeedMultiplier or 2.0
+  ExecuteInGameThread(function()
+    update_player_speeds(mod, multiplier, isActive)
+  end)
+end
+
+function M.update_multiplier(mod, multiplier)
+  mod.Config.SpeedMultiplier = multiplier
+  if speedBoostActive then
+    ExecuteInGameThread(function()
+      update_player_speeds(mod, multiplier, true)
+    end)
+  end
 end
 
 return M

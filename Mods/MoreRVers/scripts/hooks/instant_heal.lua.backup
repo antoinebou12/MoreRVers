@@ -20,19 +20,14 @@ local function get_health_component(pawn, mod)
   -- Try multiple approaches to find health component
   local ok, healthComp = pcall(function()
     -- Approach 1: Direct property access
-    if pawn.HealthComponent then
-      local isValid = true
-      local okCheck = pcall(function() isValid = pawn.HealthComponent:IsValid() end)
-      if okCheck and isValid then
-        if mod then mod.Debug("Found HealthComponent via direct property access") end
-        return pawn.HealthComponent
-      end
+    if pawn.HealthComponent and pawn.HealthComponent:IsValid() then
+      if mod then mod.Debug("Found HealthComponent via direct property access") end
+      return pawn.HealthComponent
     end
     
     -- Approach 2: Health property (some games use this)
-    local healthOk, healthVal = pcall(function() return pawn.Health end)
-    if healthOk and healthVal and type(healthVal) == "number" then
-      if mod then mod.Debug("Found Health as direct property on pawn: " .. tostring(healthVal)) end
+    if pawn.Health and type(pawn.Health) == "number" then
+      if mod then mod.Debug("Found Health as direct property on pawn") end
       return pawn  -- Return pawn itself if Health is a direct property
     end
     
@@ -46,19 +41,11 @@ local function get_health_component(pawn, mod)
       }
       
       for _, className in ipairs(healthClasses) do
-        local compOk, comp = pcall(function() return pawn:GetComponentByClass(className) end)
-        if compOk and comp then
-          local compValidOk, compValid = pcall(function() return comp:IsValid() end)
-          if compValidOk and compValid then
-            -- Check if it has health-related properties
-            local hasHealth = false
-            local checkOk = pcall(function()
-              hasHealth = (comp.Health ~= nil) or (comp.CurrentHealth ~= nil) or (comp.GetHealth ~= nil)
-            end)
-            if checkOk and hasHealth then
-              if mod then mod.Debug("Found health component via GetComponentByClass: " .. className) end
-              return comp
-            end
+        local comp = pawn:GetComponentByClass(className)
+        if comp and comp:IsValid() then
+          -- Check if it has health-related properties
+          if comp.Health or comp.CurrentHealth or comp.GetHealth then
+            return comp
           end
         end
       end
@@ -66,19 +53,11 @@ local function get_health_component(pawn, mod)
     
     -- Approach 4: Try GetComponentsByClass
     if pawn.GetComponentsByClass then
-      local compsOk, comps = pcall(function() return pawn:GetComponentsByClass("/Script/Engine.ActorComponent") end)
-      if compsOk and comps then
+      local comps = pawn:GetComponentsByClass("/Script/Engine.ActorComponent")
+      if comps then
         for _, comp in ipairs(comps) do
-          local compValidOk, compValid = pcall(function() return comp:IsValid() end)
-          if compValidOk and compValid then
-            local hasHealth = false
-            local checkOk = pcall(function()
-              hasHealth = (comp.Health ~= nil) or (comp.CurrentHealth ~= nil) or (comp.GetHealth ~= nil)
-            end)
-            if checkOk and hasHealth then
-              if mod then mod.Debug("Found health component via GetComponentsByClass") end
-              return comp
-            end
+          if comp:IsValid() and (comp.Health or comp.CurrentHealth or comp.GetHealth) then
+            return comp
           end
         end
       end
@@ -92,7 +71,7 @@ local function get_health_component(pawn, mod)
     return healthComp
   end
 
-  if mod then mod.Debug("Failed to find health component - tried all approaches") end
+  if mod then mod.Debug("Failed to find health component") end
   return nil
 end
 

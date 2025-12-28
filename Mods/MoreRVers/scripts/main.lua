@@ -132,6 +132,37 @@ local function parse_ini(filepath)
           config.InstantHealThreshold = num
         end
       end
+
+      -- Parse VehicleSpeedEnabled (boolean: 1/0, true/false)
+      if key == "VehicleSpeedEnabled" then
+        local boolVal = nil
+        if value == "1" or value:lower() == "true" then
+          boolVal = true
+        elseif value == "0" or value:lower() == "false" then
+          boolVal = false
+        end
+        if boolVal ~= nil then
+          config.VehicleSpeedEnabled = boolVal
+        end
+      end
+
+      -- Parse VehicleSpeedMultiplier (number)
+      if key == "VehicleSpeedMultiplier" then
+        local num = tonumber(value)
+        if num then
+          config.VehicleSpeedMultiplier = num
+        end
+      end
+
+      -- Parse VehicleKeybind (string)
+      if key == "VehicleKeybind" then
+        config.VehicleKeybind = value
+      end
+
+      -- Parse MenuKeybind (string)
+      if key == "MenuKeybind" then
+        config.MenuKeybind = value
+      end
     end
     
     ::continue::
@@ -160,7 +191,11 @@ if ModPath then
       SpeedMultiplier = parsedConfig.SpeedMultiplier or 2.0,
       SpeedKeybind = parsedConfig.SpeedKeybind or "F5",
       InstantHealEnabled = parsedConfig.InstantHealEnabled ~= nil and parsedConfig.InstantHealEnabled or true,
-      InstantHealThreshold = parsedConfig.InstantHealThreshold or 0.10
+      InstantHealThreshold = parsedConfig.InstantHealThreshold or 0.10,
+      VehicleSpeedEnabled = parsedConfig.VehicleSpeedEnabled ~= nil and parsedConfig.VehicleSpeedEnabled or true,
+      VehicleSpeedMultiplier = parsedConfig.VehicleSpeedMultiplier or 2.0,
+      VehicleKeybind = parsedConfig.VehicleKeybind or "F8",
+      MenuKeybind = parsedConfig.MenuKeybind or "F7"
     }
   end
 end
@@ -178,7 +213,11 @@ MoreRVers.Config = configLoaded or {
   SpeedMultiplier = 2.0,
   SpeedKeybind = "F5",
   InstantHealEnabled = true,
-  InstantHealThreshold = 0.10
+  InstantHealThreshold = 0.10,
+  VehicleSpeedEnabled = true,
+  VehicleSpeedMultiplier = 2.0,
+  VehicleKeybind = "F8",
+  MenuKeybind = "F7"
 }
 
 -- Logging utilities with levels and timestamps
@@ -442,6 +481,11 @@ local instant_heal = nil
 if MoreRVers.Config.InstantHealEnabled then
   instant_heal = require_hook("instant_heal")
 end
+local vehicle_speed = nil
+if MoreRVers.Config.VehicleSpeedEnabled then
+  vehicle_speed = require_hook("vehicle_speed")
+end
+local menu = require_hook("menu")
 local ui_helpers = nil
 if MoreRVers.Config.EnableClientUiTweaks then
   ui_helpers = require_hook("ui_helpers")
@@ -523,6 +567,17 @@ end
 if speed_boost then
   local ok, err = pcall(function()
     speed_boost.install_hooks(MoreRVers)
+    -- Store update callbacks for menu system (wrapped to pass mod)
+    if speed_boost.update_active then
+      MoreRVers.update_speed_boost = function(isActive)
+        speed_boost.update_active(MoreRVers, isActive)
+      end
+    end
+    if speed_boost.update_multiplier then
+      MoreRVers.update_speed_multiplier = function(multiplier)
+        speed_boost.update_multiplier(MoreRVers, multiplier)
+      end
+    end
   end)
   if not ok then
     MoreRVers.Warn("Speed boost hook failed to load (non-fatal): " .. tostring(err))
@@ -532,9 +587,44 @@ end
 if instant_heal then
   local ok, err = pcall(function()
     instant_heal.install_hooks(MoreRVers)
+    -- Store update callbacks for menu system (wrapped to pass mod)
+    if instant_heal.update_active then
+      MoreRVers.update_instant_heal = function(isActive)
+        instant_heal.update_active(MoreRVers, isActive)
+      end
+    end
   end)
   if not ok then
     MoreRVers.Warn("Instant heal hook failed to load (non-fatal): " .. tostring(err))
+  end
+end
+
+if vehicle_speed then
+  local ok, err = pcall(function()
+    vehicle_speed.install_hooks(MoreRVers)
+    -- Store update callbacks for menu system (wrapped to pass mod)
+    if vehicle_speed.update_active then
+      MoreRVers.update_vehicle_speed = function(isActive)
+        vehicle_speed.update_active(MoreRVers, isActive)
+      end
+    end
+    if vehicle_speed.update_multiplier then
+      MoreRVers.update_vehicle_multiplier = function(multiplier)
+        vehicle_speed.update_multiplier(MoreRVers, multiplier)
+      end
+    end
+  end)
+  if not ok then
+    MoreRVers.Warn("Vehicle speed hook failed to load (non-fatal): " .. tostring(err))
+  end
+end
+
+if menu then
+  local ok, err = pcall(function()
+    menu.install_hooks(MoreRVers)
+  end)
+  if not ok then
+    MoreRVers.Warn("Menu hook failed to load (non-fatal): " .. tostring(err))
   end
 end
 

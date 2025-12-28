@@ -185,13 +185,6 @@ InstantHealThreshold = 0.10
   - 0.05 = 5% - heal when health drops below 5% (more aggressive)
   - Range: 0.01 - 0.99
   - **Note**: This prevents death by healing before health reaches 0%
-
-### Instant Heal Settings
-- **InstantHealEnabled**: Enable/disable instant heal feature (1 = enabled, 0 = disabled)
-- **InstantHealThreshold**: Health threshold percentage below which player is automatically healed to full
-  - 0.10 = 10% (default) - player heals when health drops below 10%
-  - 0.25 = 25% - player heals when health drops below 25%
-  - Range: 0.01 - 0.99
   - When health drops below this percentage, player is instantly restored to full health
   - Only affects local player (server-safe)
 
@@ -264,16 +257,6 @@ Successful installation can be verified by checking the UE4SS console for the fo
 - Ensure you're in a game session (not main menu)
 - The feature only affects the local player (server-safe)
 - Health component may not be accessible in all game states - check console for debug messages
-
-### Instant heal not working
-
-- Check that `InstantHealEnabled = 1` in config.ini
-- Verify `InstantHealThreshold` is within valid range (0.01 - 0.99)
-- Check console for "Instant heal enabled" message
-- Ensure you're in a game session with a valid pawn
-- Instant heal only affects the local player (server-safe)
-- Health component may not be accessible - check console for debug messages
-- If health component is not found, the game may use a different health system
 
 ## Contributing
 

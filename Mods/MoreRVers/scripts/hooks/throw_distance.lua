@@ -8,14 +8,18 @@ local M = {}
 local UEHelpers = require("UEHelpers")
 
 -- Get physics component from actor/pawn
-local function get_physics_component(actor)
+local function get_physics_component(actor, mod)
   if not actor or not actor:IsValid() then
+    if mod then mod.Debug("get_physics_component: actor invalid") end
     return nil
   end
+  
+  if mod then mod.Debug("Attempting to get physics component from actor: " .. tostring(actor)) end
   
   -- Try RootComponent first (most common)
   local ok1, rootComp = pcall(function()
     if actor.RootComponent and actor.RootComponent:IsValid() then
+      if mod then mod.Debug("Found RootComponent") end
       return actor.RootComponent
     end
     return nil
@@ -25,9 +29,11 @@ local function get_physics_component(actor)
     -- Check if it's a physics component
     local ok2, isPrimitive = pcall(function()
       if rootComp.IsSimulatingPhysics and rootComp:IsSimulatingPhysics() then
+        if mod then mod.Debug("RootComponent is simulating physics") end
         return true
       end
       -- Even if not simulating, we can try to add impulse
+      if mod then mod.Debug("RootComponent found (not simulating physics, but usable)") end
       return true
     end)
     if ok2 then
@@ -38,6 +44,7 @@ local function get_physics_component(actor)
   -- Try MeshComponent as fallback
   local ok3, meshComp = pcall(function()
     if actor.MeshComponent and actor.MeshComponent:IsValid() then
+      if mod then mod.Debug("Found MeshComponent as fallback") end
       return actor.MeshComponent
     end
     return nil
@@ -47,16 +54,20 @@ local function get_physics_component(actor)
     return meshComp
   end
   
+  if mod then mod.Debug("Failed to find physics component") end
   return nil
 end
 
 -- Apply throw impulse to component
 local function apply_throw_impulse(mod, component, direction, baseForce, multiplier)
   if not component or not component:IsValid() then
+    mod.Debug("apply_throw_impulse: component invalid")
     return false
   end
   
   local finalForce = baseForce * multiplier
+  mod.Debug(string.format("Applying throw impulse: baseForce=%.2f, multiplier=%.2f, finalForce=%.2f", 
+    baseForce, multiplier, finalForce))
   
   -- Normalize direction if needed
   local dirX = direction.X or 0
@@ -101,7 +112,7 @@ local function apply_throw_impulse(mod, component, direction, baseForce, multipl
   end)
   
   if ok and err then
-    mod.Debug(string.format("Applied throw impulse: force=%.2f, dir=(%.2f,%.2f,%.2f)", 
+    mod.Log(string.format("Applied throw impulse: force=%.2f, dir=(%.2f,%.2f,%.2f)", 
       finalForce, dirX, dirY, dirZ))
     return true
   else
@@ -132,8 +143,16 @@ local function hook_damage_event(mod)
     local ok, err = pcall(function()
       RegisterHook(sig, function(self, DamageAmount, DamageEvent, ...)
         -- Validate inputs
-        if not self or not self:IsValid() then return end
-        if not DamageAmount or DamageAmount <= 0 then return end
+        if not self or not self:IsValid() then 
+          mod.Debug("throw_distance hook: self invalid")
+          return 
+        end
+        if not DamageAmount or DamageAmount <= 0 then 
+          mod.Debug("throw_distance hook: invalid damage amount")
+          return 
+        end
+        
+        mod.Debug(string.format("Damage event: amount=%.2f, actor=%s", DamageAmount, tostring(self)))
         
         -- Only apply to pawns/characters
         local isPawn = false
@@ -145,6 +164,9 @@ local function hook_damage_event(mod)
         end)
         if okCheck and result then
           isPawn = true
+          mod.Debug("Actor is a pawn/character - applying throw distance")
+        else
+          mod.Debug("Actor is not a pawn/character - skipping")
         end
         
         if not isPawn then return end
@@ -199,9 +221,12 @@ local function hook_damage_event(mod)
         baseForce = baseForce * (1.0 + DamageAmount / 100.0)
         
         -- Get physics component and apply impulse
-        local component = get_physics_component(self)
+        local component = get_physics_component(self, mod)
         if component then
+          mod.Debug("Found physics component - applying throw impulse")
           apply_throw_impulse(mod, component, damageDir, baseForce, multiplier)
+        else
+          mod.Debug("Could not find physics component for throw distance")
         end
       end)
       
