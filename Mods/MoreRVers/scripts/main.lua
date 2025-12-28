@@ -452,8 +452,8 @@ local function is_host_or_server()
     if World.GetNetMode then
       local netMode = World:GetNetMode()
       -- NM_DedicatedServer = 1, NM_ListenServer = 2, NM_Client = 3, NM_Standalone = 0
-      if netMode == 1 or netMode == 2 then
-        return true  -- Dedicated server or listen server (host)
+      if netMode == 0 or netMode == 1 or netMode == 2 then
+        return true  -- Standalone (single-player), dedicated server, or listen server (host)
       end
     end
     
