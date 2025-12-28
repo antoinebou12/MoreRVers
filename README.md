@@ -29,6 +29,8 @@ This mod patches the game's multiplayer cap at runtime, allowing you to host ses
 - **Speed Boost** - Configurable movement speed multiplier with optional toggle keybind (enabled by default)
 - **Vehicle Speed Boost** - Configurable vehicle speed multiplier with optional toggle keybind
 - **Fall Damage Removal** - Option to disable fall damage for all players
+- **Gear Hotkeys** - Arcade-style gear shifting with hotkeys for direct gear selection or sequential shifting
+- **Control Menu** - In-game menu (F7) for runtime control of all features without console access
 
 ## Installation
 
@@ -212,11 +214,50 @@ InstantHealThreshold = 0.10
   - **Global mode**: Host's settings apply to ALL players
   - **Individual mode**: Each player's heal works independently
 
+### Vehicle Speed Settings
+- **VehicleSpeedEnabled**: Enable/disable vehicle speed boost (1 = enabled by default, 0 = disabled)
+- **VehicleSpeedMultiplier**: Multiplier for vehicle speed
+  - 1.0 = normal speed
+  - 2.0 = double speed (default)
+  - Range: 0.5 - 100.0
+- **VehicleKeybind**: Keybind for vehicle speed toggle (hold to activate)
+  - Leave empty for persistent boost (always active)
+  - Valid keys: F1-F12, etc.
+  - Example: `VehicleKeybind = F8` (hold F8 for faster vehicles)
+  - **Global mode**: Host's keybind controls ALL vehicles
+  - **Individual mode**: Each player controls their own vehicle speed
+
+### Fall Damage Settings
+- **FallDamageEnabled**: Enable/disable fall damage removal (1 = enabled by default, 0 = disabled)
+  - When enabled, players will not take damage from falling/landing
+  - Works in both Global and Individual modes
+
+### Gear Hotkeys Settings
+- **GearHotkeysEnabled**: Enable/disable gear hotkeys feature (1 = enabled by default, 0 = disabled)
+- **SequentialLinking**: Arcade mode for sequential gear shifting (1 = enabled by default, 0 = disabled)
+  - When enabled: Use arrow keys (up/down) to shift through gears sequentially
+  - When disabled: Use numpad keys for direct gear selection
+- **Gear Keys**: Direct gear selection keybinds (when SequentialLinking = 0)
+  - **Gear1Key** through **Gear5Key**: Numpad keys (NUM_ONE, NUM_TWO, etc.)
+  - **ReverseKey**: Reverse gear keybind (default: NUM_ZERO)
+  - **NeutralKey**: Neutral gear keybind (default: NUM_SIX)
+- **Sequential Shift Keys**: Used when SequentialLinking = 1
+  - **ShiftUpKey**: Shift to higher gear (default: UP_ARROW)
+  - **ShiftDownKey**: Shift to lower gear (default: DOWN_ARROW)
+- **Note**: Gear hotkeys work independently of vehicle speed settings
+
+### Menu Settings
+- **MenuKeybind**: Keybind to open the in-game control menu (default: F7)
+  - Press this key to open the console-based menu for runtime feature control
+  - When menu is open, press F10 to toggle ControlMode (Global/Individual)
+
 The game must be restarted for configuration changes to take effect.
 
 ## Console Commands
 
 MoreRVers provides comprehensive console commands for runtime control of all features. These commands take effect immediately without requiring a game restart.
+
+**Alternative to Console Commands**: You can also use the in-game control menu (press F7) to toggle features and adjust multipliers without typing commands. See the [Menu Settings](#menu-settings) section for more information.
 
 ### Opening the Console
 

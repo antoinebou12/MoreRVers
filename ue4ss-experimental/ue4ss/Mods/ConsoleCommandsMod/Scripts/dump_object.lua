@@ -3,29 +3,16 @@
 
 local UEHelpers = require("UEHelpers")
 
---[[
-    Console command format:
-      dump_object <ObjectPath> [PropertyName [Index/Key/PropertyName ...]]
-    
-    Examples:
-      dump_object /Engine/Transient.GameEngine_2147482624
-      dump_object /Engine/Transient.GameEngine_2147482624 ShaderComplexityColors
-      dump_object /Engine/Transient.GameEngine_2147482624 ShaderComplexityColors 0
-      dump_object <ObjectPath> <StructProperty> <NestedProperty>
-    
-    Supported features:
-      ✓ ArrayProperty: Access elements by index (e.g., PropertyName 0)
-      ✓ StructProperty: Navigate into nested struct properties
-      ✓ ObjectProperty: Navigate into referenced objects
-      ✓ WeakObjectProperty: Navigate into weak object references
-      ✓ MapProperty: Partial support (shows type info, key lookup pending UE4SS API)
-      ✓ Circular reference detection (prevents infinite loops)
-      ✓ Depth limiting (max 32 levels to prevent stack overflow)
-    
-    Limitations:
-      - MapProperty key lookup requires full UE4SS MapProperty API support
-      - Type-prefix parsing (UClass /Engine/Script/...) not implemented (uses full paths)
-]]
+-- Console command format: dump_object ObjectPath [PropertyName [Index Key PropertyName ...]]
+-- Examples:
+--   dump_object /Engine/Transient.GameEngine_2147482624
+--   dump_object /Engine/Transient.GameEngine_2147482624 ShaderComplexityColors
+--   dump_object /Engine/Transient.GameEngine_2147482624 ShaderComplexityColors 0
+-- Supported features: ArrayProperty, StructProperty, ObjectProperty, WeakObjectProperty
+-- MapProperty: Partial support (shows type info, key lookup pending UE4SS API)
+-- Circular reference detection and depth limiting (max 32 levels) are implemented
+-- Limitations: MapProperty key lookup requires full UE4SS API support
+-- Type-prefix parsing not implemented (uses full paths)
 
 string.padleft = function(InString, Length, PadWithChar)
     -- We pad with spaces by default.
