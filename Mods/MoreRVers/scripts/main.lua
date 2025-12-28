@@ -205,6 +205,31 @@ local function string_to_key(keyString)
     return Key.F5
   end
   
+  -- Key name mapping table: maps common key names to their Key enum equivalents
+  -- This handles cases where config uses friendly names like "LeftShift" but
+  -- the Key enum uses different names like "LShift"
+  local keyNameMap = {
+    -- Modifier keys - try common variations
+    ["LeftShift"] = {"LShift", "LeftShift", "Left_Shift", "Shift_Left"},
+    ["RightShift"] = {"RShift", "RightShift", "Right_Shift", "Shift_Right"},
+    ["LeftControl"] = {"LControl", "LeftControl", "Left_Control", "Control_Left", "LCtrl", "LeftCtrl"},
+    ["RightControl"] = {"RControl", "RightControl", "Right_Control", "Control_Right", "RCtrl", "RightCtrl"},
+    ["LeftAlt"] = {"LAlt", "LeftAlt", "Left_Alt", "Alt_Left"},
+    ["RightAlt"] = {"RAlt", "RightAlt", "Right_Alt", "Alt_Right"},
+    -- Common aliases
+    ["Shift"] = {"LShift", "LeftShift", "Left_Shift"},
+    ["Control"] = {"LControl", "LeftControl", "Left_Control", "LCtrl", "LeftCtrl"},
+    ["Ctrl"] = {"LControl", "LeftControl", "Left_Control", "LCtrl", "LeftCtrl"},
+    ["Alt"] = {"LAlt", "LeftAlt", "Left_Alt"},
+    -- Short forms
+    ["LShift"] = {"LShift", "LeftShift", "Left_Shift"},
+    ["RShift"] = {"RShift", "RightShift", "Right_Shift"},
+    ["LCtrl"] = {"LControl", "LeftControl", "Left_Control", "LCtrl", "LeftCtrl"},
+    ["RCtrl"] = {"RControl", "RightControl", "Right_Control", "RCtrl", "RightCtrl"},
+    ["LAlt"] = {"LAlt", "LeftAlt", "Left_Alt"},
+    ["RAlt"] = {"RAlt", "RightAlt", "Right_Alt"},
+  }
+  
   local keyMap = setmetatable({}, {
     __index = function(t, k)
       local ok, v = pcall(function() return Key[k] end)
@@ -213,15 +238,44 @@ local function string_to_key(keyString)
     end
   })
   
-  local upperKey = keyString:upper()
-  local keyConst = keyMap[upperKey]
+  -- Normalize the key string (trim whitespace)
+  local normalizedKey = keyString:match("^%s*(.-)%s*$")
+  local attempted = {}
   
-  if not keyConst then
-    MoreRVers.Warn("Invalid key '" .. keyString .. "'; falling back to F5")
-    return Key.F5
+  -- Check if we have a mapping for this key name
+  if keyNameMap[normalizedKey] then
+    -- Try each variation in the mapping
+    for _, mappedName in ipairs(keyNameMap[normalizedKey]) do
+      table.insert(attempted, mappedName)
+      local keyConst = keyMap[mappedName]
+      if keyConst then
+        return keyConst
+      end
+    end
   end
   
-  return keyConst
+  -- Try original string first (case-sensitive) for mixed-case keys
+  local keyConst = keyMap[normalizedKey]
+  if not attempted[1] or attempted[1] ~= normalizedKey then
+    table.insert(attempted, normalizedKey)
+  end
+  if keyConst then
+    return keyConst
+  end
+  
+  -- If that fails, try uppercase version (for keys like F5, R, etc.)
+  local upperKey = normalizedKey:upper()
+  if upperKey ~= normalizedKey then
+    table.insert(attempted, upperKey)
+    keyConst = keyMap[upperKey]
+    if keyConst then
+      return keyConst
+    end
+  end
+  
+  -- All attempts failed
+  MoreRVers.Warn("Invalid key '" .. keyString .. "' (attempted: " .. table.concat(attempted, ", ") .. "); falling back to F5")
+  return Key.F5
 end
 
 -- Export key mapper for hooks
