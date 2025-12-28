@@ -77,18 +77,36 @@ jobs:
           fi
           
           # Check Revive section
-          if ! grep -q "^\[Revive\]" "$CONFIG_FILE" || ! grep -q "^ReviveEnabled" "$CONFIG_FILE" || ! grep -q "^ReviveKeybind" "$CONFIG_FILE"; then
-            MISSING_CONFIG+=("Revive section")
+          if ! grep -q "^\[Revive\]" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("Revive section header [Revive]")
+          fi
+          if ! grep -q "^ReviveEnabled" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("ReviveEnabled key")
+          fi
+          if ! grep -q "^ReviveKeybind" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("ReviveKeybind key")
           fi
           
           # Check Throw section
-          if ! grep -q "^\[Throw\]" "$CONFIG_FILE" || ! grep -q "^ThrowDistanceMultiplier" "$CONFIG_FILE"; then
-            MISSING_CONFIG+=("Throw section")
+          if ! grep -q "^\[Throw\]" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("Throw section header [Throw]")
+          fi
+          if ! grep -q "^ThrowDistanceMultiplier" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("ThrowDistanceMultiplier key")
           fi
           
           # Check Speed section (new)
-          if ! grep -q "^\[Speed\]" "$CONFIG_FILE" || ! grep -q "^SpeedBoostEnabled" "$CONFIG_FILE" || ! grep -q "^SpeedMultiplier" "$CONFIG_FILE" || ! grep -q "^SpeedKeybind" "$CONFIG_FILE"; then
-            MISSING_CONFIG+=("Speed section")
+          if ! grep -q "^\[Speed\]" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("Speed section header [Speed]")
+          fi
+          if ! grep -q "^SpeedBoostEnabled" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("SpeedBoostEnabled key")
+          fi
+          if ! grep -q "^SpeedMultiplier" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("SpeedMultiplier key")
+          fi
+          if ! grep -q "^SpeedKeybind" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("SpeedKeybind key")
           fi
           
           if [ ${#MISSING_CONFIG[@]} -ne 0 ]; then
