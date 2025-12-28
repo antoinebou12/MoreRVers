@@ -28,8 +28,111 @@ jobs:
           else
             VERSION=${GITHUB_REF#refs/tags/v}
           fi
+          if [ -z "$VERSION" ]; then
+            echo "ERROR: Version extraction failed!"
+            exit 1
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
+      
+      # ===== VALIDATION STEPS =====
+      - name: Validate Hook Files
+        run: |
+          echo "Validating hook files..."
+          HOOKS_DIR="Mods/MoreRVers/scripts/hooks"
+          REQUIRED_HOOKS=("game_session.lua" "join_gate.lua" "revive.lua" "throw_distance.lua" "speed_boost.lua" "ui_helpers.lua")
+          MISSING_HOOKS=()
+          
+          for hook in "${REQUIRED_HOOKS[@]}"; do
+            if [ ! -f "$HOOKS_DIR/$hook" ]; then
+              MISSING_HOOKS+=("$hook")
+            fi
+          done
+          
+          if [ ${#MISSING_HOOKS[@]} -ne 0 ]; then
+            echo "ERROR: Missing required hook files:"
+            printf '  - %s\n' "${MISSING_HOOKS[@]}"
+            exit 1
+          fi
+          
+          echo "✓ All hook files present:"
+          printf '  - %s\n' "${REQUIRED_HOOKS[@]}"
+      
+      - name: Validate Config File
+        run: |
+          echo "Validating config.ini..."
+          CONFIG_FILE="Mods/MoreRVers/config.ini"
+          
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "ERROR: config.ini not found!"
+            exit 1
+          fi
+          
+          # Check for required sections and keys
+          MISSING_CONFIG=()
+          
+          # Check MaxPlayers
+          if ! grep -q "^MaxPlayers" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("MaxPlayers")
+          fi
+          
+          # Check Revive section
+          if ! grep -q "^\[Revive\]" "$CONFIG_FILE" || ! grep -q "^ReviveEnabled" "$CONFIG_FILE" || ! grep -q "^ReviveKeybind" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("Revive section")
+          fi
+          
+          # Check Throw section
+          if ! grep -q "^\[Throw\]" "$CONFIG_FILE" || ! grep -q "^ThrowDistanceMultiplier" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("Throw section")
+          fi
+          
+          # Check Speed section (new)
+          if ! grep -q "^\[Speed\]" "$CONFIG_FILE" || ! grep -q "^SpeedBoostEnabled" "$CONFIG_FILE" || ! grep -q "^SpeedMultiplier" "$CONFIG_FILE" || ! grep -q "^SpeedKeybind" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("Speed section")
+          fi
+          
+          if [ ${#MISSING_CONFIG[@]} -ne 0 ]; then
+            echo "ERROR: Missing required config entries:"
+            printf '  - %s\n' "${MISSING_CONFIG[@]}"
+            exit 1
+          fi
+          
+          echo "✓ Config file validated - all sections present"
+          echo "  - MaxPlayers"
+          echo "  - [Revive] section (ReviveEnabled, ReviveKeybind)"
+          echo "  - [Throw] section (ThrowDistanceMultiplier)"
+          echo "  - [Speed] section (SpeedBoostEnabled, SpeedMultiplier, SpeedKeybind)"
+      
+      - name: Validate Mod Structure
+        run: |
+          echo "Validating mod structure..."
+          MOD_DIR="Mods/MoreRVers"
+          MISSING_FILES=()
+          
+          # Check critical files
+          if [ ! -f "$MOD_DIR/mod.json" ]; then
+            MISSING_FILES+=("mod.json")
+          fi
+          if [ ! -f "$MOD_DIR/config.ini" ]; then
+            MISSING_FILES+=("config.ini")
+          fi
+          if [ ! -f "$MOD_DIR/scripts/main.lua" ]; then
+            MISSING_FILES+=("scripts/main.lua")
+          fi
+          
+          if [ ${#MISSING_FILES[@]} -ne 0 ]; then
+            echo "ERROR: Missing critical mod files:"
+            printf '  - %s\n' "${MISSING_FILES[@]}"
+            exit 1
+          fi
+          
+          # Verify main.lua loads speed_boost hook
+          if ! grep -q "speed_boost" "$MOD_DIR/scripts/main.lua"; then
+            echo "ERROR: main.lua does not load speed_boost hook!"
+            exit 1
+          fi
+          
+          echo "✓ Mod structure validated"
       
       - name: Prepare UE4SS files
         run: |
@@ -46,6 +149,33 @@ jobs:
           
           # Remove Thunderstore-specific files
           rm -f mod-only-package/MoreRVers/manifest.json
+          
+          echo "Mod-Only package structure created"
+      
+      - name: Verify Mod-Only Package
+        run: |
+          echo "Verifying Mod-Only package..."
+          PACKAGE_DIR="mod-only-package"
+          
+          # Count hook files
+          HOOK_COUNT=$(find "$PACKAGE_DIR/MoreRVers/scripts/hooks" -name "*.lua" 2>/dev/null | wc -l)
+          echo "  Hook files: $HOOK_COUNT"
+          
+          # Verify critical files
+          if [ ! -f "$PACKAGE_DIR/MoreRVers/scripts/main.lua" ]; then
+            echo "ERROR: main.lua missing in Mod-Only package!"
+            exit 1
+          fi
+          if [ ! -f "$PACKAGE_DIR/MoreRVers/config.ini" ]; then
+            echo "ERROR: config.ini missing in Mod-Only package!"
+            exit 1
+          fi
+          if [ ! -f "$PACKAGE_DIR/README.md" ]; then
+            echo "ERROR: README.md missing in Mod-Only package!"
+            exit 1
+          fi
+          
+          echo "✓ Mod-Only package verified"
       
       # ===== WITH-UE4SS PACKAGE =====
       - name: Create With-UE4SS package structure
@@ -71,6 +201,43 @@ jobs:
           # Add README
           cp README.md with-ue4ss-package/
           cp LICENSE with-ue4ss-package/
+          
+          echo "With-UE4SS package structure created"
+      
+      - name: Verify With-UE4SS Package
+        run: |
+          echo "Verifying With-UE4SS package..."
+          PACKAGE_DIR="with-ue4ss-package"
+          
+          # Count hook files
+          HOOK_COUNT=$(find "$PACKAGE_DIR/ue4ss/Mods/MoreRVers/scripts/hooks" -name "*.lua" 2>/dev/null | wc -l)
+          echo "  Hook files: $HOOK_COUNT"
+          
+          # Verify critical files
+          if [ ! -f "$PACKAGE_DIR/ue4ss/Mods/MoreRVers/scripts/main.lua" ]; then
+            echo "ERROR: main.lua missing in With-UE4SS package!"
+            exit 1
+          fi
+          if [ ! -f "$PACKAGE_DIR/ue4ss/Mods/MoreRVers/config.ini" ]; then
+            echo "ERROR: config.ini missing in With-UE4SS package!"
+            exit 1
+          fi
+          if [ ! -f "$PACKAGE_DIR/ue4ss/UE4SS.dll" ]; then
+            echo "ERROR: UE4SS.dll missing in With-UE4SS package!"
+            exit 1
+          fi
+          if [ ! -f "$PACKAGE_DIR/README.md" ]; then
+            echo "ERROR: README.md missing in With-UE4SS package!"
+            exit 1
+          fi
+          
+          # Verify mods.txt contains MoreRVers
+          if ! grep -q "^MoreRVers" "$PACKAGE_DIR/ue4ss/Mods/mods.txt"; then
+            echo "ERROR: MoreRVers not enabled in mods.txt!"
+            exit 1
+          fi
+          
+          echo "✓ With-UE4SS package verified"
       
       # ===== CREATE ZIP FILES =====
       - name: Create Mod-Only ZIP
@@ -107,17 +274,47 @@ jobs:
       
       - name: Summary
         run: |
-          echo "Successfully created release packages!"
+          echo "=========================================="
+          echo "  Release Packages Created Successfully!"
+          echo "=========================================="
+          echo ""
+          echo "Version: ${{ steps.get_version.outputs.version }}"
           echo ""
           echo "Generated files:"
-          echo "  - MoreRVers-v${{ steps.get_version.outputs.version }}-ModOnly.zip"
-          echo "  - MoreRVers-v${{ steps.get_version.outputs.version }}-WithUE4SS.zip"
+          echo "  ✓ MoreRVers-v${{ steps.get_version.outputs.version }}-ModOnly.zip"
+          echo "  ✓ MoreRVers-v${{ steps.get_version.outputs.version }}-WithUE4SS.zip"
+          echo ""
+          echo "Features included:"
+          echo "  • MaxPlayers - Configurable player limit (1-24)"
+          echo "  • Revive System - Configurable keybind to revive/respawn players"
+          echo "  • Enhanced Throw Distance - Configurable multiplier for throw distance"
+          echo "  • Speed Boost - Configurable movement speed multiplier with toggle keybind"
+          echo ""
+          echo "Hook files packaged:"
+          echo "  • game_session.lua"
+          echo "  • join_gate.lua"
+          echo "  • revive.lua"
+          echo "  • throw_distance.lua"
+          echo "  • speed_boost.lua (NEW)"
+          echo "  • ui_helpers.lua"
+          echo ""
+          echo "Package contents:"
+          MOD_ONLY_SIZE=$(du -h MoreRVers-v${{ steps.get_version.outputs.version }}-ModOnly.zip | cut -f1)
+          WITH_UE4SS_SIZE=$(du -h MoreRVers-v${{ steps.get_version.outputs.version }}-WithUE4SS.zip | cut -f1)
+          echo "  • Mod-Only: $MOD_ONLY_SIZE"
+          echo "  • With-UE4SS: $WITH_UE4SS_SIZE"
           echo ""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo " TEST MODE: Packages uploaded as artifacts (available for 7 days)"
-            echo "   Download from: Actions tab → This workflow run → Artifacts section"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  TEST MODE: Packages uploaded as artifacts"
+            echo "  Available for 7 days"
+            echo "  Download from: Actions tab → This workflow run → Artifacts section"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           else
-            echo " RELEASE MODE: Packages uploaded to release"
-            echo "   Available at: ${{ github.event.release.html_url }}"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  RELEASE MODE: Packages uploaded to release"
+            echo "  Available at: ${{ github.event.release.html_url }}"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           fi
+          echo ""
 
