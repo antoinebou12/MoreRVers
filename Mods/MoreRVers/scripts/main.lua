@@ -111,6 +111,27 @@ local function parse_ini(filepath)
       if key == "SpeedKeybind" then
         config.SpeedKeybind = value
       end
+      
+      -- Parse InstantHealEnabled (boolean: 1/0, true/false)
+      if key == "InstantHealEnabled" then
+        local boolVal = nil
+        if value == "1" or value:lower() == "true" then
+          boolVal = true
+        elseif value == "0" or value:lower() == "false" then
+          boolVal = false
+        end
+        if boolVal ~= nil then
+          config.InstantHealEnabled = boolVal
+        end
+      end
+      
+      -- Parse InstantHealThreshold (number: 0.01-0.99)
+      if key == "InstantHealThreshold" then
+        local num = tonumber(value)
+        if num then
+          config.InstantHealThreshold = num
+        end
+      end
     end
     
     ::continue::
@@ -137,7 +158,9 @@ if ModPath then
       ThrowDistanceMultiplier = parsedConfig.ThrowDistanceMultiplier or 2.0,
       SpeedBoostEnabled = parsedConfig.SpeedBoostEnabled ~= nil and parsedConfig.SpeedBoostEnabled or true,
       SpeedMultiplier = parsedConfig.SpeedMultiplier or 2.0,
-      SpeedKeybind = parsedConfig.SpeedKeybind or "LeftShift"
+      SpeedKeybind = parsedConfig.SpeedKeybind or "F5",
+      InstantHealEnabled = parsedConfig.InstantHealEnabled ~= nil and parsedConfig.InstantHealEnabled or true,
+      InstantHealThreshold = parsedConfig.InstantHealThreshold or 0.10
     }
   end
 end
@@ -149,11 +172,13 @@ MoreRVers.Config = configLoaded or {
   LogLevel = "INFO",
   TimestampFormat = "%H:%M:%S",
   ReviveEnabled = true,
-  ReviveKeybind = "F5",
+  ReviveKeybind = "F6",
   ThrowDistanceMultiplier = 2.0,
   SpeedBoostEnabled = true,
   SpeedMultiplier = 2.0,
-  SpeedKeybind = "LeftShift"
+  SpeedKeybind = "F5",
+  InstantHealEnabled = true,
+  InstantHealThreshold = 0.10
 }
 
 -- Logging utilities with levels and timestamps
@@ -199,41 +224,41 @@ end
 MoreRVers.TargetMaxPlayers = sanitize_target_cap(MoreRVers.Config.TargetMaxPlayers)
 
 -- Key mapping system (GearHotkeys-style)
+-- Returns: keyConst, keyName (e.g., Key.F5, "F5")
 local function string_to_key(keyString)
   if not keyString or type(keyString) ~= "string" then
     MoreRVers.Warn("Invalid key string provided; falling back to F5")
-    return Key.F5
+    return Key.F5, "F5"
   end
   
   -- Key name mapping table: maps common key names to their Key enum equivalents
-  -- This handles cases where config uses friendly names like "LeftShift" but
-  -- the Key enum uses different names like "LShift"
+  -- This handles cases where config uses friendly names but the Key enum uses different names
+  -- Based on Keybinds mod, keys use UPPER_CASE_WITH_UNDERSCORES format
   local keyNameMap = {
-    -- Modifier keys - try common variations
-    ["LeftShift"] = {"LShift", "LeftShift", "Left_Shift", "Shift_Left"},
-    ["RightShift"] = {"RShift", "RightShift", "Right_Shift", "Shift_Right"},
-    ["LeftControl"] = {"LControl", "LeftControl", "Left_Control", "Control_Left", "LCtrl", "LeftCtrl"},
-    ["RightControl"] = {"RControl", "RightControl", "Right_Control", "Control_Right", "RCtrl", "RightCtrl"},
-    ["LeftAlt"] = {"LAlt", "LeftAlt", "Left_Alt", "Alt_Left"},
-    ["RightAlt"] = {"RAlt", "RightAlt", "Right_Alt", "Alt_Right"},
-    -- Common aliases
-    ["Shift"] = {"LShift", "LeftShift", "Left_Shift"},
-    ["Control"] = {"LControl", "LeftControl", "Left_Control", "LCtrl", "LeftCtrl"},
-    ["Ctrl"] = {"LControl", "LeftControl", "Left_Control", "LCtrl", "LeftCtrl"},
-    ["Alt"] = {"LAlt", "LeftAlt", "Left_Alt"},
-    -- Short forms
-    ["LShift"] = {"LShift", "LeftShift", "Left_Shift"},
-    ["RShift"] = {"RShift", "RightShift", "Right_Shift"},
-    ["LCtrl"] = {"LControl", "LeftControl", "Left_Control", "LCtrl", "LeftCtrl"},
-    ["RCtrl"] = {"RControl", "RightControl", "Right_Control", "RCtrl", "RightCtrl"},
-    ["LAlt"] = {"LAlt", "LeftAlt", "Left_Alt"},
-    ["RAlt"] = {"RAlt", "RightAlt", "Right_Alt"},
+    -- Shift keys - test LEFT_SHIFT format first (UPPER_CASE_WITH_UNDERSCORES)
+    ["LeftShift"] = {"LEFT_SHIFT", "LShift", "LeftShift", "Left_Shift", "Shift_Left", "LEFTSHIFT"},
+    ["RightShift"] = {"RIGHT_SHIFT", "RShift", "RightShift", "Right_Shift", "Shift_Right", "RIGHTSHIFT"},
+    ["LShift"] = {"LEFT_SHIFT", "LShift", "LeftShift", "Left_Shift"},
+    ["RShift"] = {"RIGHT_SHIFT", "RShift", "RightShift", "Right_Shift"},
+    ["LEFT_SHIFT"] = {"LEFT_SHIFT", "LShift", "LeftShift", "Left_Shift"},
+    ["RIGHT_SHIFT"] = {"RIGHT_SHIFT", "RShift", "RightShift", "Right_Shift"},
+    -- Alt keys
+    ["LeftAlt"] = {"LEFT_ALT", "LAlt", "LeftAlt", "Left_Alt", "Alt_Left", "LEFTALT"},
+    ["RightAlt"] = {"RIGHT_ALT", "RAlt", "RightAlt", "Right_Alt", "Alt_Right", "RIGHTALT"},
+    ["Alt"] = {"LEFT_ALT", "LAlt", "LeftAlt", "Left_Alt"},
+    ["LAlt"] = {"LEFT_ALT", "LAlt", "LeftAlt", "Left_Alt"},
+    ["RAlt"] = {"RIGHT_ALT", "RAlt", "RightAlt", "Right_Alt"},
+    ["LEFT_ALT"] = {"LEFT_ALT", "LAlt", "LeftAlt", "Left_Alt"},
+    ["RIGHT_ALT"] = {"RIGHT_ALT", "RAlt", "RightAlt", "Right_Alt"},
   }
   
   local keyMap = setmetatable({}, {
     __index = function(t, k)
       local ok, v = pcall(function() return Key[k] end)
-      if ok then return v end
+      if ok and v ~= nil then
+        MoreRVers.Debug("Key lookup success: '" .. k .. "' found")
+        return v
+      end
       return nil
     end
   })
@@ -249,33 +274,111 @@ local function string_to_key(keyString)
       table.insert(attempted, mappedName)
       local keyConst = keyMap[mappedName]
       if keyConst then
-        return keyConst
+        return keyConst, mappedName
       end
     end
   end
-  
+
   -- Try original string first (case-sensitive) for mixed-case keys
   local keyConst = keyMap[normalizedKey]
   if not attempted[1] or attempted[1] ~= normalizedKey then
     table.insert(attempted, normalizedKey)
   end
   if keyConst then
-    return keyConst
+    return keyConst, normalizedKey
   end
-  
+
   -- If that fails, try uppercase version (for keys like F5, R, etc.)
   local upperKey = normalizedKey:upper()
   if upperKey ~= normalizedKey then
     table.insert(attempted, upperKey)
     keyConst = keyMap[upperKey]
     if keyConst then
-      return keyConst
+      return keyConst, upperKey
     end
   end
   
-  -- All attempts failed
-  MoreRVers.Warn("Invalid key '" .. keyString .. "' (attempted: " .. table.concat(attempted, ", ") .. "); falling back to F5")
-  return Key.F5
+  -- All attempts failed - log debug info and return fallback
+  local attemptedStr = table.concat(attempted, ", ")
+  MoreRVers.Debug("Key lookup failed for '" .. keyString .. "' (tried: " .. attemptedStr .. ")")
+
+  -- Try one more time with direct Key table access to test common variations
+  -- This helps discover the actual Key enum name if it exists but wasn't in our mapping
+  local directOk, directVal = pcall(function()
+    -- Test uppercase underscore format first (most likely based on Keybinds mod)
+    -- Test Shift keys first (LEFT_SHIFT format)
+    MoreRVers.Debug("Testing Key.LEFT_SHIFT...")
+    if Key.LEFT_SHIFT then 
+      MoreRVers.Debug("Key.LEFT_SHIFT exists!")
+      return "LEFT_SHIFT" 
+    end
+    MoreRVers.Debug("Testing Key.RIGHT_SHIFT...")
+    if Key.RIGHT_SHIFT then 
+      MoreRVers.Debug("Key.RIGHT_SHIFT exists!")
+      return "RIGHT_SHIFT" 
+    end
+    -- Test Alt keys
+    MoreRVers.Debug("Testing Key.LEFT_ALT...")
+    if Key.LEFT_ALT then 
+      MoreRVers.Debug("Key.LEFT_ALT exists!")
+      return "LEFT_ALT" 
+    end
+    MoreRVers.Debug("Testing Key.RIGHT_ALT...")
+    if Key.RIGHT_ALT then 
+      MoreRVers.Debug("Key.RIGHT_ALT exists!")
+      return "RIGHT_ALT" 
+    end
+    -- Test mixed case variations for Shift
+    MoreRVers.Debug("Testing Key.LeftShift...")
+    if Key.LeftShift then 
+      MoreRVers.Debug("Key.LeftShift exists!")
+      return "LeftShift" 
+    end
+    MoreRVers.Debug("Testing Key.LShift...")
+    if Key.LShift then 
+      MoreRVers.Debug("Key.LShift exists!")
+      return "LShift" 
+    end
+    MoreRVers.Debug("Testing Key.Left_Shift...")
+    if Key.Left_Shift then 
+      MoreRVers.Debug("Key.Left_Shift exists!")
+      return "Left_Shift" 
+    end
+    -- Test mixed case variations for Alt
+    MoreRVers.Debug("Testing Key.LeftAlt...")
+    if Key.LeftAlt then 
+      MoreRVers.Debug("Key.LeftAlt exists!")
+      return "LeftAlt" 
+    end
+    MoreRVers.Debug("Testing Key.LAlt...")
+    if Key.LAlt then 
+      MoreRVers.Debug("Key.LAlt exists!")
+      return "LAlt" 
+    end
+    MoreRVers.Debug("Testing Key.Left_Alt...")
+    if Key.Left_Alt then 
+      MoreRVers.Debug("Key.Left_Alt exists!")
+      return "Left_Alt" 
+    end
+    MoreRVers.Debug("No matching Key enum found in direct test")
+    return nil
+  end)
+
+  if directOk and directVal then
+    MoreRVers.Debug("Discovered Key enum value: Key." .. directVal .. " exists for input '" .. keyString .. "'")
+    local finalKey = keyMap[directVal]
+    if finalKey then
+      MoreRVers.Debug("Successfully mapped '" .. keyString .. "' to Key." .. directVal)
+      return finalKey, directVal
+    else
+      MoreRVers.Warn("Key." .. directVal .. " exists but keyMap lookup failed")
+    end
+  elseif not directOk then
+    MoreRVers.Debug("Direct Key enum test failed with error: " .. tostring(directVal))
+  end
+
+  MoreRVers.Warn("Invalid key '" .. keyString .. "'; falling back to F5")
+  return Key.F5, "F5"
 end
 
 -- Export key mapper for hooks
@@ -335,6 +438,10 @@ local join_gate = require_hook("join_gate")
 local revive = require_hook("revive")
 local throw_distance = require_hook("throw_distance")
 local speed_boost = require_hook("speed_boost")
+local instant_heal = nil
+if MoreRVers.Config.InstantHealEnabled then
+  instant_heal = require_hook("instant_heal")
+end
 local ui_helpers = nil
 if MoreRVers.Config.EnableClientUiTweaks then
   ui_helpers = require_hook("ui_helpers")
@@ -369,7 +476,7 @@ else
       end)
       
       if okSet then
-        MoreRVers.Log(string.format("Applied MaxPlayers override: %s → %d", 
+        MoreRVers.Log(string.format("Applied MaxPlayers override: %s -> %d",
           tostring(original or "?"), MoreRVers.TargetMaxPlayers))
         
         -- Try to set on CDO too
@@ -419,6 +526,15 @@ if speed_boost then
   end)
   if not ok then
     MoreRVers.Warn("Speed boost hook failed to load (non-fatal): " .. tostring(err))
+  end
+end
+
+if instant_heal then
+  local ok, err = pcall(function()
+    instant_heal.install_hooks(MoreRVers)
+  end)
+  if not ok then
+    MoreRVers.Warn("Instant heal hook failed to load (non-fatal): " .. tostring(err))
   end
 end
 

@@ -139,7 +139,7 @@ function M.install_hooks(mod)
         mod.Warn("Could not fetch GameSession CDO in BeginPlay: " .. tostring(errGetCDO))
       end
 
-      mod.Log(string.format("AGameSession MaxPlayers original=%s liveSet=%s cdoSet=%s → %d",
+      mod.Log(string.format("AGameSession MaxPlayers original=%s liveSet=%s cdoSet=%s -> %d",
         tostring(original), tostring(okSetLive), tostring(okSetCDO), mod.TargetMaxPlayers))
 
         -- Optional: dump properties once on first run to aid troubleshooting

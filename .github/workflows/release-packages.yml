@@ -40,7 +40,7 @@ jobs:
         run: |
           echo "Validating hook files..."
           HOOKS_DIR="Mods/MoreRVers/scripts/hooks"
-          REQUIRED_HOOKS=("game_session.lua" "join_gate.lua" "revive.lua" "throw_distance.lua" "speed_boost.lua" "ui_helpers.lua")
+          REQUIRED_HOOKS=("game_session.lua" "join_gate.lua" "revive.lua" "throw_distance.lua" "speed_boost.lua" "instant_heal.lua" "ui_helpers.lua")
           MISSING_HOOKS=()
           
           for hook in "${REQUIRED_HOOKS[@]}"; do
@@ -143,6 +143,26 @@ jobs:
             echo "Debug: SpeedKeybind found"
           fi
           
+          # Check InstantHeal section
+          if ! grep -q "^\[InstantHeal\]" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("InstantHeal section header [InstantHeal]")
+            echo "Debug: [InstantHeal] NOT found"
+          else
+            echo "Debug: [InstantHeal] found"
+          fi
+          if ! grep -q "^InstantHealEnabled" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("InstantHealEnabled key")
+            echo "Debug: InstantHealEnabled NOT found"
+          else
+            echo "Debug: InstantHealEnabled found"
+          fi
+          if ! grep -q "^InstantHealThreshold" "$CONFIG_FILE"; then
+            MISSING_CONFIG+=("InstantHealThreshold key")
+            echo "Debug: InstantHealThreshold NOT found"
+          else
+            echo "Debug: InstantHealThreshold found"
+          fi
+          
           if [ ${#MISSING_CONFIG[@]} -ne 0 ]; then
             echo "ERROR: Missing required config entries:"
             printf '  - %s\n' "${MISSING_CONFIG[@]}"
@@ -150,8 +170,8 @@ jobs:
             echo "Debug: Showing all lines containing brackets:"
             grep -n "\[" "$CONFIG_FILE" || echo "No brackets found"
             echo ""
-            echo "Debug: Showing all lines starting with Revive, Throw, or Speed:"
-            grep -n "^Revive\|^Throw\|^Speed" "$CONFIG_FILE" || echo "No matching lines found"
+            echo "Debug: Showing all lines starting with Revive, Throw, Speed, or InstantHeal:"
+            grep -n "^Revive\|^Throw\|^Speed\|^InstantHeal" "$CONFIG_FILE" || echo "No matching lines found"
             exit 1
           fi
           
@@ -160,7 +180,7 @@ jobs:
           echo "  - [Revive] section (ReviveEnabled, ReviveKeybind)"
           echo "  - [Throw] section (ThrowDistanceMultiplier)"
           echo "  - [Speed] section (SpeedBoostEnabled, SpeedMultiplier, SpeedKeybind)"
-      
+          echo "  - [InstantHeal] section (InstantHealEnabled, InstantHealThreshold)"
       - name: Validate Mod Structure
         run: |
           echo "Validating mod structure..."

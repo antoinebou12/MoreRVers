@@ -103,12 +103,18 @@ local function apply_speed_boost(mod, movementComp, multiplier, isActive)
   return true
 end
 
--- Update speed for all player pawns
+-- Update speed for local player only (server-safe)
 local function update_player_speeds(mod, multiplier, isActive)
   local ok, err = pcall(function()
-    -- Get all player controllers
+    -- Get the local player's controller only
     local PlayerController = UEHelpers.GetPlayerController()
     if not PlayerController or not PlayerController:IsValid() then
+      return false
+    end
+    
+    -- Verify this is the local player's controller (server-safe check)
+    if PlayerController.IsLocalPlayerController and not PlayerController:IsLocalPlayerController() then
+      mod.Debug("PlayerController is not local - cannot modify speed for other players")
       return false
     end
     
@@ -129,7 +135,7 @@ local function update_player_speeds(mod, multiplier, isActive)
       return false
     end
     
-    -- Get movement component and apply speed
+    -- Get movement component and apply speed (only to local player)
     local movementComp = get_character_movement(pawn)
     if movementComp then
       apply_speed_boost(mod, movementComp, multiplier, isActive)
@@ -161,6 +167,11 @@ local function hook_pawn_creation(mod, multiplier)
       RegisterHook(sig, function(self, InPawn, ...)
         if not self or not self:IsValid() then return end
         if not InPawn or not InPawn:IsValid() then return end
+        
+        -- Only apply speed to local player's pawn (server-safe)
+        if self.IsLocalPlayerController and not self:IsLocalPlayerController() then
+          return -- Skip non-local players
+        end
         
         -- Wait a frame for component initialization
         ExecuteInGameThread(function()
@@ -293,14 +304,19 @@ function M.install_hooks(mod)
   if mod.Config.SpeedKeybind and mod.Config.SpeedKeybind ~= "" then
     local keybindString = mod.Config.SpeedKeybind
     local keybind = nil
-    
+    local actualKeyName = keybindString
+
     if mod.string_to_key then
-      keybind = mod.string_to_key(keybindString)
+      keybind, actualKeyName = mod.string_to_key(keybindString)
+      if not actualKeyName then
+        actualKeyName = "F5"
+      end
     else
-      mod.Warn("string_to_key helper not available; using LeftShift")
-      keybind = Key.LeftShift
+      mod.Warn("string_to_key helper not available; using F5")
+      keybind = Key.F5
+      actualKeyName = "F5"
     end
-    
+
     -- Register keybind for toggle (hold to activate)
     local ok, err = pcall(function()
       -- Register key press - refreshes timer to keep speed active
@@ -313,8 +329,12 @@ function M.install_hooks(mod)
           update_player_speeds(mod, multiplier, true)
         end)
       end)
-      
-      mod.Log("Speed boost toggle keybind registered: " .. keybindString .. " (hold to activate)")
+
+      if actualKeyName ~= keybindString then
+        mod.Log("Speed boost toggle keybind registered: " .. actualKeyName .. " (from config: " .. keybindString .. ", hold to activate)")
+      else
+        mod.Log("Speed boost toggle keybind registered: " .. actualKeyName .. " (hold to activate)")
+      end
     end)
     
     if not ok then
