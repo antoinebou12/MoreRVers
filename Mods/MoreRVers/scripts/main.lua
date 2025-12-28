@@ -163,11 +163,20 @@ local function parse_ini(filepath)
       if key == "MenuKeybind" then
         config.MenuKeybind = value
       end
+
+      -- Parse ServerMode (string: Global or Individual)
+      if key == "ServerMode" then
+        local mode = value:match("^%s*(.-)%s*$")  -- Trim whitespace
+        if mode:lower() == "global" or mode:lower() == "individual" then
+          -- Capitalize first letter for consistency
+          config.ServerMode = mode:sub(1,1):upper() .. mode:sub(2):lower()
+        end
+      end
     end
-    
+
     ::continue::
   end
-  
+
   file:close()
   return config
 end
@@ -184,15 +193,16 @@ if ModPath then
       EnableClientUiTweaks = false,
       LogLevel = "INFO",
       TimestampFormat = "%H:%M:%S",
-      ReviveEnabled = parsedConfig.ReviveEnabled ~= nil and parsedConfig.ReviveEnabled or true,
-      ReviveKeybind = parsedConfig.ReviveKeybind or "F5",
+      ServerMode = parsedConfig.ServerMode or "Global",  -- Global by default (host controls all players)
+      ReviveEnabled = parsedConfig.ReviveEnabled ~= nil and parsedConfig.ReviveEnabled or true,  -- ENABLED by default
+      ReviveKeybind = parsedConfig.ReviveKeybind or "F6",
       ThrowDistanceMultiplier = parsedConfig.ThrowDistanceMultiplier or 2.0,
-      SpeedBoostEnabled = parsedConfig.SpeedBoostEnabled ~= nil and parsedConfig.SpeedBoostEnabled or true,
+      SpeedBoostEnabled = parsedConfig.SpeedBoostEnabled ~= nil and parsedConfig.SpeedBoostEnabled or true,  -- ENABLED by default
       SpeedMultiplier = parsedConfig.SpeedMultiplier or 2.0,
       SpeedKeybind = parsedConfig.SpeedKeybind or "F5",
-      InstantHealEnabled = parsedConfig.InstantHealEnabled ~= nil and parsedConfig.InstantHealEnabled or true,
+      InstantHealEnabled = parsedConfig.InstantHealEnabled ~= nil and parsedConfig.InstantHealEnabled or true,  -- ENABLED by default
       InstantHealThreshold = parsedConfig.InstantHealThreshold or 0.10,
-      VehicleSpeedEnabled = parsedConfig.VehicleSpeedEnabled ~= nil and parsedConfig.VehicleSpeedEnabled or true,
+      VehicleSpeedEnabled = parsedConfig.VehicleSpeedEnabled ~= nil and parsedConfig.VehicleSpeedEnabled or true,  -- ENABLED by default
       VehicleSpeedMultiplier = parsedConfig.VehicleSpeedMultiplier or 2.0,
       VehicleKeybind = parsedConfig.VehicleKeybind or "F8",
       MenuKeybind = parsedConfig.MenuKeybind or "F7"
@@ -206,15 +216,16 @@ MoreRVers.Config = configLoaded or {
   EnableClientUiTweaks = false,
   LogLevel = "INFO",
   TimestampFormat = "%H:%M:%S",
-  ReviveEnabled = true,
+  ServerMode = "Global",  -- Global by default (host controls all players)
+  ReviveEnabled = true,  -- ENABLED by default
   ReviveKeybind = "F6",
   ThrowDistanceMultiplier = 2.0,
-  SpeedBoostEnabled = true,
+  SpeedBoostEnabled = true,  -- ENABLED by default
   SpeedMultiplier = 2.0,
   SpeedKeybind = "F5",
-  InstantHealEnabled = true,
+  InstantHealEnabled = true,  -- ENABLED by default
   InstantHealThreshold = 0.10,
-  VehicleSpeedEnabled = true,
+  VehicleSpeedEnabled = true,  -- ENABLED by default
   VehicleSpeedMultiplier = 2.0,
   VehicleKeybind = "F8",
   MenuKeybind = "F7"
@@ -422,6 +433,67 @@ end
 
 -- Export key mapper for hooks
 MoreRVers.string_to_key = string_to_key
+
+-- Host detection helper
+-- Returns true if current player is the host/server
+local function is_host_or_server()
+  local ok, result = pcall(function()
+    local World = UEHelpers.GetWorld()
+    if not World or not World:IsValid() then
+      return false
+    end
+    
+    -- Check NetMode
+    if World.GetNetMode then
+      local netMode = World:GetNetMode()
+      -- NM_DedicatedServer = 1, NM_ListenServer = 2, NM_Client = 3, NM_Standalone = 0
+      if netMode == 1 or netMode == 2 then
+        return true  -- Dedicated server or listen server (host)
+      end
+    end
+    
+    -- Check if PlayerController has authority
+    local PlayerController = UEHelpers.GetPlayerController()
+    if PlayerController and PlayerController:IsValid() then
+      if PlayerController.HasAuthority then
+        local hasAuth = PlayerController:HasAuthority()
+        if hasAuth then
+          return true
+        end
+      end
+      
+      -- Check if this is the first player (likely host)
+      local GameMode = UEHelpers.GetGameModeBase()
+      if GameMode and GameMode:IsValid() then
+        if GameMode.GetNumPlayers then
+          local numPlayers = GameMode:GetNumPlayers()
+          if numPlayers == 1 then
+            -- Only one player, must be host
+            return true
+          end
+        end
+      end
+    end
+    
+    -- Fallback: In single player or standalone, always consider host
+    local World = UEHelpers.GetWorld()
+    if World and World:IsValid() then
+      if World.GetNetMode then
+        local netMode = World:GetNetMode()
+        if netMode == 0 then  -- NM_Standalone
+          return true
+        end
+      end
+    end
+    
+    return false
+  end)
+  
+  return ok and result == true
+end
+
+-- Export host detection for hooks
+MoreRVers.is_host_or_server = is_host_or_server
 
 -- Engine/game info (best-effort)
 local function get_engine_info()

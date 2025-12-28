@@ -99,17 +99,30 @@ local function apply_speed_boost(mod, movementComp, multiplier, isActive)
     -- Apply multiplier if active
     if isActive then
       newSpeed = originalSpeed * multiplier
+      mod.Debug(string.format("Speed boost ACTIVE: %.1f -> %.1f (%.1fx)", originalSpeed, newSpeed, multiplier))
+    else
+      mod.Debug(string.format("Speed boost INACTIVE: restoring to %.1f", originalSpeed))
     end
 
     -- Apply the speed change
     if movementComp.MaxWalkSpeed ~= nil then
+      local currentSpeed = movementComp.MaxWalkSpeed
       movementComp.MaxWalkSpeed = newSpeed
-      mod.Log(string.format("Speed modified: MaxWalkSpeed %.1f -> %.1f (%.1fx)",
-        originalSpeed, newSpeed, multiplier))
+      if isActive then
+        mod.Log(string.format("Speed modified: MaxWalkSpeed %.1f -> %.1f (%.1fx)",
+          originalSpeed, newSpeed, multiplier))
+      else
+        mod.Debug(string.format("Speed restored: MaxWalkSpeed %.1f -> %.1f", currentSpeed, newSpeed))
+      end
     elseif movementComp.MaxSpeed ~= nil then
+      local currentSpeed = movementComp.MaxSpeed
       movementComp.MaxSpeed = newSpeed
-      mod.Log(string.format("Speed modified: MaxSpeed %.1f -> %.1f (%.1fx)",
-        originalSpeed, newSpeed, multiplier))
+      if isActive then
+        mod.Log(string.format("Speed modified: MaxSpeed %.1f -> %.1f (%.1fx)",
+          originalSpeed, newSpeed, multiplier))
+      else
+        mod.Debug(string.format("Speed restored: MaxSpeed %.1f -> %.1f", currentSpeed, newSpeed))
+      end
     end
 
     return true
@@ -123,55 +136,96 @@ local function apply_speed_boost(mod, movementComp, multiplier, isActive)
   return true
 end
 
--- Update speed for the player who pressed the keybind (works for all players)
+-- Update speed based on ServerMode (Global = all players, Individual = this player only)
 local function update_player_speeds(mod, multiplier, isActive)
+  local serverMode = mod.Config.ServerMode or "Global"
+
   local ok, err = pcall(function()
-    -- Get the player controller (works for all players, each controls their own)
-    local PlayerController = UEHelpers.GetPlayerController()
-    if not PlayerController or not PlayerController:IsValid() then
-      mod.Debug("No valid PlayerController found for speed boost")
-      return false
-    end
+    if serverMode == "Global" then
+      -- GLOBAL MODE: Host controls ALL players' speed
+      -- Check if we're the host
+      if mod.is_host_or_server and mod.is_host_or_server() then
+        mod.Debug("Global mode: Host detected - applying speed boost to ALL players")
 
-    mod.Debug("PlayerController found - applying speed boost")
+        local pawnsModified = 0
+        local okFind, allCharacters = pcall(function()
+          return FindAllOf("Character")
+        end)
 
-    -- Get pawn from controller
-    local pawn = nil
-    local okPawn, pawnResult = pcall(function()
-      if PlayerController.Pawn and PlayerController.Pawn:IsValid() then
-        return PlayerController.Pawn
+        if okFind and allCharacters then
+          mod.Debug(string.format("Found %d characters to modify", #allCharacters))
+
+          for _, character in ipairs(allCharacters) do
+            if character and character:IsValid() then
+              local movementComp = get_character_movement(character, mod)
+              if movementComp then
+                apply_speed_boost(mod, movementComp, multiplier, isActive)
+                pawnsModified = pawnsModified + 1
+              end
+            end
+          end
+
+          mod.Log(string.format("Global mode: Host modified speed for %d character(s)", pawnsModified))
+          return true
+        else
+          mod.Debug("Failed to find characters for global mode: " .. tostring(allCharacters))
+          return false
+        end
+      else
+        mod.Debug("Global mode: Not host - speed controlled by host only")
+        return false  -- Only host can control speed in Global mode
       end
-      return nil
-    end)
 
-    if okPawn and pawnResult then
-      pawn = pawnResult
-    end
+    else
+      -- INDIVIDUAL MODE: Apply only to this player's pawn (each player controls their own)
+      mod.Debug("Individual mode: Applying speed boost to this player only")
 
-    if not pawn then
-      mod.Debug("No pawn found for player")
+      local PlayerController = UEHelpers.GetPlayerController()
+      if not PlayerController or not PlayerController:IsValid() then
+        mod.Debug("No valid PlayerController found for speed boost")
+        return false
+      end
+
+      mod.Debug("PlayerController found - applying speed boost")
+
+      -- Get pawn from controller
+      local pawn = nil
+      local okPawn, pawnResult = pcall(function()
+        if PlayerController.Pawn and PlayerController.Pawn:IsValid() then
+          return PlayerController.Pawn
+        end
+        return nil
+      end)
+
+      if okPawn and pawnResult then
+        pawn = pawnResult
+      end
+
+      if not pawn then
+        mod.Debug("No pawn found for player")
+        return false
+      end
+
+      mod.Debug("Found player pawn: " .. tostring(pawn))
+
+      -- Get movement component and apply speed
+      local movementComp = get_character_movement(pawn, mod)
+      if movementComp then
+        apply_speed_boost(mod, movementComp, multiplier, isActive)
+        return true
+      else
+        mod.Debug("Could not find movement component for player pawn")
+      end
+
       return false
     end
-
-    mod.Debug("Found player pawn: " .. tostring(pawn))
-
-    -- Get movement component and apply speed
-    local movementComp = get_character_movement(pawn, mod)
-    if movementComp then
-      apply_speed_boost(mod, movementComp, multiplier, isActive)
-      return true
-    else
-      mod.Debug("Could not find movement component for player pawn")
-    end
-    
-    return false
   end)
-  
+
   if not ok then
     mod.Debug("Error updating player speeds: " .. tostring(err))
     return false
   end
-  
+
   return err or false
 end
 
@@ -230,20 +284,21 @@ local function setup_speed_tick(mod, multiplier)
   
   -- Timer to auto-reset toggle state (simulates key release)
   -- This creates a "hold" effect - keybind refreshes the timer
-  local toggleResetTimer = 0
-  local toggleResetInterval = 0.15 -- Reset after 150ms of no key press
+  local toggleResetTimer = nil
+  local toggleResetInterval = 0.2 -- Reset after 200ms of no key press (increased for better responsiveness)
   
   -- Use a tick function to check key state and update speed
   local lastUpdate = 0
   local updateInterval = 0.05 -- Update every 50ms for responsive feel
   
-    local function speed_tick()
+  local function speed_tick()
     local currentTime = os.clock()
     
     -- Check if toggle should reset (key not held)
-    if toggleKeyPressed and (currentTime - toggleResetTimer) > toggleResetInterval then
+    if toggleKeyPressed and toggleResetTimer and (currentTime - toggleResetTimer) > toggleResetInterval then
       mod.Debug("Speed boost timer expired - deactivating speed")
       toggleKeyPressed = false
+      toggleResetTimer = nil
     end
     
     if currentTime - lastUpdate < updateInterval then
@@ -256,6 +311,10 @@ local function setup_speed_tick(mod, multiplier)
       local success = update_player_speeds(mod, multiplier, toggleKeyPressed)
       if not success and toggleKeyPressed then
         mod.Debug("Speed boost update failed in tick")
+      elseif success and toggleKeyPressed then
+        mod.Debug("Speed boost active in tick")
+      elseif not toggleKeyPressed then
+        mod.Debug("Speed boost inactive in tick")
       end
     end)
   end

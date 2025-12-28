@@ -11,22 +11,31 @@ local menuKeybind = nil
 
 -- Display the menu in console
 local function display_menu(mod)
+  local serverMode = mod.Config.ServerMode or "Global"
   local speedStatus = mod.Config.SpeedBoostEnabled and "ENABLED" or "DISABLED"
   local speedMult = mod.Config.SpeedMultiplier or 2.0
-  
+
   local vehicleStatus = mod.Config.VehicleSpeedEnabled and "ENABLED" or "DISABLED"
   local vehicleMult = mod.Config.VehicleSpeedMultiplier or 2.0
-  
+
   local healStatus = mod.Config.InstantHealEnabled and "ENABLED" or "DISABLED"
   local healThreshold = (mod.Config.InstantHealThreshold or 0.10) * 100
-  
+
   local throwStatus = mod.Config.ThrowDistanceMultiplier and (mod.Config.ThrowDistanceMultiplier > 1.0) and "ENABLED" or "DISABLED"
   local throwMult = mod.Config.ThrowDistanceMultiplier or 2.0
-  
+
   print("")
   print("========================================")
   print("  MoreRVers Control Menu (v" .. mod.Version .. ")")
   print("========================================")
+  print("")
+  print("Server Mode: " .. serverMode)
+  if serverMode == "Global" then
+    print("  (Host controls ALL players)")
+  else
+    print("  (Each player controls themselves)")
+  end
+  print("  [M] Toggle Server Mode")
   print("")
   print("Feature Status:")
   print(string.format("  [1] Speed Boost:      %s (%.1fx)", speedStatus, speedMult))
@@ -98,7 +107,7 @@ local function handle_menu_key(mod, key)
     local new = math.min(current + 0.5, 5.0)
     mod.Config.SpeedMultiplier = new
     if mod.update_speed_multiplier then
-      mod.update_speed_multiplier(mod, new)
+      mod.update_speed_multiplier(new)
     end
     mod.Log(string.format("Speed Multiplier: %.1f -> %.1f", current, new))
     display_menu(mod)
@@ -147,6 +156,17 @@ local function handle_menu_key(mod, key)
     print("")
     print("Menu closed. Press F7 to reopen.")
     print("")
+
+  elseif key == Key.M then
+    -- Toggle ServerMode (Global <-> Individual)
+    if mod.Config.ServerMode == "Global" then
+      mod.Config.ServerMode = "Individual"
+      mod.Log("ServerMode: INDIVIDUAL (each player controls themselves)")
+    else
+      mod.Config.ServerMode = "Global"
+      mod.Log("ServerMode: GLOBAL (host controls all players)")
+    end
+    display_menu(mod)
   end
 end
 
@@ -203,13 +223,24 @@ local function register_menu_keybinds(mod)
           handle_menu_key(mod, key)
         end)
       end)
-      
+
       if not ok2 then
         mod.Debug("Failed to register number key: " .. tostring(err2))
       end
     end
   end
-  
+
+  -- Register M key for ServerMode toggle
+  local okM, errM = pcall(function()
+    RegisterKeyBind(Key.M, function()
+      handle_menu_key(mod, Key.M)
+    end)
+  end)
+
+  if not okM then
+    mod.Debug("Failed to register M key: " .. tostring(errM))
+  end
+
   return true
 end
 

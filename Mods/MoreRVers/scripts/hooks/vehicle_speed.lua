@@ -3,7 +3,7 @@
 --  - Hook vehicle entry/possession to increase vehicle speed
 --  - Apply configurable speed multiplier to vehicles
 --  - Support toggle keybind (hold key) or persistent boost
---  - Only affect local player's vehicles (server-safe)
+--  - Each player controls their own vehicles (server-safe)
 
 local M = {}
 
@@ -179,56 +179,55 @@ local function apply_vehicle_speed(mod, vehicle, multiplier, isActive)
   return err or false
 end
 
--- Check if vehicle is controlled by local player
-local function is_local_player_vehicle(vehicle, mod)
+-- Check if vehicle is controlled by this player (each player controls their own)
+local function is_player_vehicle(vehicle, mod)
   if not vehicle or not vehicle:IsValid() then
     return false
   end
-  
+
   local ok, result = pcall(function()
-    -- Get vehicle's controller
+    local PlayerController = UEHelpers.GetPlayerController()
+    if not PlayerController or not PlayerController:IsValid() then
+      if mod then mod.Debug("PlayerController is nil or invalid") end
+      return false
+    end
+
+    -- Check if this vehicle is this player's pawn
+    if PlayerController.Pawn == vehicle then
+      if mod then mod.Debug("Vehicle is this player's pawn") end
+      return true
+    end
+
+    -- Alternative: Get vehicle's controller
     local controller = nil
     if vehicle.GetController then
       controller = vehicle:GetController()
     elseif vehicle.Controller then
       controller = vehicle.Controller
     end
-    
-    if not controller or not controller:IsValid() then
-      if mod then mod.Debug("Vehicle has no controller") end
-      return false
-    end
-    
-    -- Check if controller is local player
-    if controller.IsLocalPlayerController and controller:IsLocalPlayerController() then
-      if mod then mod.Debug("Vehicle is controlled by local player") end
-      return true
-    end
-    
-    -- Alternative: Check if local player controller's pawn is this vehicle
-    local PlayerController = UEHelpers.GetPlayerController()
-    if PlayerController and PlayerController:IsValid() then
-      if PlayerController.IsLocalPlayerController and PlayerController:IsLocalPlayerController() then
-        if PlayerController.Pawn == vehicle then
-          if mod then mod.Debug("Vehicle is local player's pawn") end
-          return true
-        end
+
+    if controller and controller:IsValid() then
+      if controller == PlayerController then
+        if mod then mod.Debug("Vehicle is controlled by this player") end
+        return true
       end
     end
-    
-    if mod then mod.Debug("Vehicle is not controlled by local player") end
+
+    if mod then mod.Debug("Vehicle is not controlled by this player") end
     return false
   end)
-  
+
   return ok and result == true
 end
 
--- Update speed for all vehicles controlled by local player
+-- Update speed for vehicles based on ServerMode (Global = all vehicles, Individual = this player's only)
 local function update_vehicle_speeds(mod, multiplier, isActive)
+  local serverMode = mod.Config.ServerMode or "Global"
+
   local ok, err = pcall(function()
     -- Try to find all vehicles
     local vehicles = {}
-    
+
     -- Try FindAllOf for different vehicle types
     local vehicleTypes = {
       "WheeledVehicle",
@@ -236,7 +235,7 @@ local function update_vehicle_speeds(mod, multiplier, isActive)
       "RV",
       "Car"
     }
-    
+
     for _, vehicleType in ipairs(vehicleTypes) do
       local found = FindAllOf(vehicleType)
       if found then
@@ -247,28 +246,38 @@ local function update_vehicle_speeds(mod, multiplier, isActive)
         end
       end
     end
-    
-    -- Apply speed to vehicles controlled by local player
+
+    -- Apply speed based on ServerMode
     local modified = 0
     for _, vehicle in ipairs(vehicles) do
-      if is_local_player_vehicle(vehicle, mod) then
+      local shouldModify = false
+
+      if serverMode == "Global" then
+        -- Global mode: Apply to ALL vehicles (host controls all)
+        shouldModify = true
+      else
+        -- Individual mode: Only apply to this player's vehicles
+        shouldModify = is_player_vehicle(vehicle, mod)
+      end
+
+      if shouldModify then
         if apply_vehicle_speed(mod, vehicle, multiplier, isActive) then
           modified = modified + 1
         end
       end
     end
-    
+
     if modified > 0 then
-      mod.Debug("Modified speed for " .. modified .. " vehicle(s)")
+      mod.Log(string.format("%s mode: Modified speed for %d vehicle(s)", serverMode, modified))
     end
-    
+
     return true
   end)
-  
+
   if not ok then
     return false
   end
-  
+
   return err or false
 end
 
@@ -278,20 +287,20 @@ local function hook_vehicle_possession(mod, multiplier)
     "/Script/Engine.PlayerController:Possess",
     "/Script/Engine.PlayerController:OnPossess",
   }
-  
+
   local hooked = false
   for _, sig in ipairs(signatures) do
     local ok, err = pcall(function()
       RegisterHook(sig, function(self, InPawn, ...)
         if not self or not self:IsValid() then return end
         if not InPawn or not InPawn:IsValid() then return end
-        
-        -- Check if this is local player
-        if self.IsLocalPlayerController and not self:IsLocalPlayerController() then
-          mod.Debug("Possession event for non-local player, skipping")
+
+        -- Only apply to this player's controller (each player controls their own)
+        local PlayerController = UEHelpers.GetPlayerController()
+        if not PlayerController or self ~= PlayerController then
           return
         end
-        
+
         -- Check if possessed actor is a vehicle
         local isVehicle = false
         local okCheck, result = pcall(function()
@@ -303,9 +312,9 @@ local function hook_vehicle_possession(mod, multiplier)
         if okCheck and result then
           isVehicle = true
         end
-        
+
         if isVehicle then
-          mod.Debug("Local player entered vehicle: " .. tostring(InPawn))
+          mod.Debug("Player entered vehicle: " .. tostring(InPawn))
           -- Wait a frame for component initialization
           ExecuteInGameThread(function()
             local isActive = true
@@ -317,17 +326,17 @@ local function hook_vehicle_possession(mod, multiplier)
           end)
         end
       end)
-      
+
       mod.Log("Hooked vehicle possession: " .. sig)
       hooked = true
       return true
     end)
-    
+
     if ok and hooked then
       break
     end
   end
-  
+
   return hooked
 end
 
@@ -339,7 +348,7 @@ local function setup_vehicle_speed_tick(mod, multiplier)
   end
   
   -- Timer to auto-reset toggle state
-  local toggleResetTimer = 0
+  local toggleResetTimer = nil
   local toggleResetInterval = 0.15 -- Reset after 150ms of no key press
   
   -- Use a tick function to check key state and update speed
@@ -350,8 +359,10 @@ local function setup_vehicle_speed_tick(mod, multiplier)
     local currentTime = os.clock()
     
     -- Check if toggle should reset (key not held)
-    if toggleKeyPressed and (currentTime - toggleResetTimer) > toggleResetInterval then
+    if toggleKeyPressed and toggleResetTimer and (currentTime - toggleResetTimer) > toggleResetInterval then
+      mod.Debug("Vehicle speed timer expired - deactivating speed")
       toggleKeyPressed = false
+      toggleResetTimer = nil
     end
     
     if currentTime - lastUpdate < updateInterval then

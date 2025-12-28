@@ -7,43 +7,22 @@ local M = {}
 
 local UEHelpers = require("UEHelpers")
 
--- Attempt to revive/respawn the local player only (server-safe)
-local function revive_player(mod)
-  mod.Log("=== REVIVE ATTEMPT INITIATED ===")
-  mod.Debug("Revive attempt initiated")
-  
+-- Attempt to revive/respawn a single player controller
+local function revive_single_player(mod, PlayerController)
+  if not PlayerController or not PlayerController:IsValid() then
+    mod.Warn("Invalid PlayerController provided to revive_single_player")
+    return false
+  end
+
+  mod.Debug("Reviving PlayerController: " .. tostring(PlayerController))
+
   local ok, err = pcall(function()
-    -- Get the local player's controller only
-    local PlayerController = UEHelpers.GetPlayerController()
-    if not PlayerController or not PlayerController:IsValid() then
-      mod.Warn("No valid PlayerController found for revive")
-      mod.Log("REVIVE FAILED: No PlayerController")
-      return false
-    end
-    mod.Debug("PlayerController found and valid: " .. tostring(PlayerController))
-    mod.Log("PlayerController found: " .. tostring(PlayerController))
-
-    -- Verify this is the local player's controller (server-safe check)
-    if PlayerController.IsLocalPlayerController then
-      local isLocal = PlayerController:IsLocalPlayerController()
-      if not isLocal then
-        mod.Warn("PlayerController is not local - cannot revive other players (server-safe check)")
-        return false
-      end
-      mod.Debug("PlayerController verified as local player")
-    else
-      mod.Debug("IsLocalPlayerController method not available, proceeding with caution")
-    end
-
-    -- Additional safety: verify this controller belongs to the local player
-    -- On clients, we should only be able to revive ourselves
     local GameMode = UEHelpers.GetGameModeBase()
     if not GameMode or not GameMode:IsValid() then
       mod.Warn("No valid GameMode found for revive")
       return false
     end
-    mod.Debug("GameMode found and valid")
-    
+
     -- Check pawn state before attempting revive
     local hasPawn = false
     local pawnState = "none"
@@ -67,7 +46,7 @@ local function revive_player(mod)
     -- Try multiple revive methods
     local revived = false
     local methodUsed = "none"
-    
+
     -- Method 1: Use GameMode::RestartPlayer
     mod.Debug("Attempting revive method 1: GameMode::RestartPlayer")
     local ok1, result1 = pcall(function()
@@ -77,11 +56,12 @@ local function revive_player(mod)
       end
       return false
     end)
-    
+
     if ok1 and result1 then
       methodUsed = "GameMode::RestartPlayer"
       mod.Log("Successfully revived player using " .. methodUsed)
       revived = true
+      return true
     else
       mod.Debug("Method 1 failed: " .. tostring(result1 or "RestartPlayer not available"))
     end
@@ -97,11 +77,12 @@ local function revive_player(mod)
         end
         return false
       end)
-      
+
       if ok2 and result2 then
         methodUsed = "GameplayStatics::RestartPlayer"
         mod.Log("Successfully revived player using " .. methodUsed)
         revived = true
+        return true
       else
         mod.Debug("Method 2 failed: " .. tostring(result2 or "GameplayStatics::RestartPlayer not available"))
       end
@@ -120,14 +101,14 @@ local function revive_player(mod)
           else
             mod.Debug("DefaultPawnClass not found in GameMode")
           end
-          
+
           if DefaultPawnClass then
             local World = UEHelpers.GetWorld()
             if World and World:IsValid() then
               -- Try to spawn at a safe location (origin or player start)
               local SpawnLocation = {X = 0, Y = 0, Z = 100}
               local SpawnRotation = {Pitch = 0, Yaw = 0, Roll = 0}
-              
+
               -- Try to find a PlayerStart
               local PlayerStarts = FindAllOf("PlayerStart")
               if PlayerStarts and #PlayerStarts > 0 then
@@ -142,7 +123,7 @@ local function revive_player(mod)
               else
                 mod.Debug("No PlayerStart found, using default location")
               end
-              
+
               local NewPawn = World:SpawnActor(DefaultPawnClass, SpawnLocation, SpawnRotation, {})
               if NewPawn and NewPawn:IsValid() then
                 PlayerController:Possess(NewPawn)
@@ -161,9 +142,10 @@ local function revive_player(mod)
         end
         return false
       end)
-      
+
       if ok3 and result3 then
         revived = true
+        return true
       else
         mod.Debug("Method 3 failed: " .. tostring(result3 or "Spawn method not available"))
       end
@@ -175,9 +157,76 @@ local function revive_player(mod)
       return false
     end
 
-    mod.Debug("Revive completed successfully using method: " .. methodUsed)
-    mod.Log("REVIVE SUCCESS: Used method " .. methodUsed)
     return true
+  end)
+
+  if not ok then
+    mod.Error("Error during revive: " .. tostring(err))
+    return false
+  end
+
+  return err or false
+end
+
+-- Attempt to revive player(s) based on ServerMode
+local function revive_player(mod)
+  mod.Log("=== REVIVE ATTEMPT INITIATED ===")
+  mod.Debug("Revive attempt initiated")
+
+  local serverMode = mod.Config.ServerMode or "Global"
+
+  local ok, err = pcall(function()
+    if serverMode == "Global" then
+      -- GLOBAL MODE: Host revives ALL players
+      if mod.is_host_or_server and mod.is_host_or_server() then
+        mod.Log("Global mode: Host reviving ALL players")
+        mod.Debug("Global mode: Host detected - reviving all players")
+
+        local playersRevived = 0
+        local okFind, allControllers = pcall(function()
+          return FindAllOf("PlayerController")
+        end)
+
+        if okFind and allControllers then
+          mod.Debug(string.format("Found %d player controllers to revive", #allControllers))
+
+          for _, controller in ipairs(allControllers) do
+            if controller and controller:IsValid() then
+              if revive_single_player(mod, controller) then
+                playersRevived = playersRevived + 1
+              end
+            end
+          end
+
+          mod.Log(string.format("Global mode: Host revived %d player(s)", playersRevived))
+          return playersRevived > 0
+        else
+          mod.Debug("Failed to find player controllers for global mode: " .. tostring(allControllers))
+          return false
+        end
+      else
+        mod.Debug("Global mode: Not host - only host can revive")
+        mod.Log("REVIVE FAILED: Not host (Global mode)")
+        return false  -- Only host can revive in Global mode
+      end
+
+    else
+      -- INDIVIDUAL MODE: Revive only this player
+      mod.Debug("Individual mode: Reviving this player only")
+
+      -- Get this player's controller
+      local PlayerController = UEHelpers.GetPlayerController()
+      if not PlayerController or not PlayerController:IsValid() then
+        mod.Warn("No valid PlayerController found for revive")
+        mod.Log("REVIVE FAILED: No PlayerController")
+        return false
+      end
+      mod.Debug("PlayerController found and valid: " .. tostring(PlayerController))
+      mod.Log("PlayerController found: " .. tostring(PlayerController))
+
+      -- Use the shared revive function
+      return revive_single_player(mod, PlayerController)
+    end
   end)
 
   if not ok then

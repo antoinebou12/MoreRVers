@@ -2,7 +2,7 @@
 -- Responsibilities:
 --  - Hook damage events to monitor player health
 --  - Automatically restore health to full when it drops below threshold
---  - Only affect local player (server-safe)
+--  - Each player controls their own instant heal
 
 local M = {}
 
@@ -275,6 +275,22 @@ local function set_health_to_max(pawn, healthComp, maxHealth, mod)
     end
     
     if mod then mod.Warn("All health restoration methods failed") end
+    
+    -- DIAGNOSTIC: Log all available methods on healthComp for troubleshooting
+    if healthComp then
+      local availableMethods = {}
+      pcall(function()
+        for key, value in pairs(healthComp) do
+          if type(value) == "function" or (type(value) == "table" and value.IsValid) then
+            table.insert(availableMethods, tostring(key))
+          end
+        end
+      end)
+      if #availableMethods > 0 then
+        mod.Warn("Available methods on health component: " .. table.concat(availableMethods, ", "))
+      end
+    end
+    
     return false
   end)
   
@@ -295,8 +311,8 @@ local function set_health_to_max(pawn, healthComp, maxHealth, mod)
   return false
 end
 
--- Check if pawn belongs to local player
-local function is_local_player_pawn(pawn, mod)
+-- Check if pawn belongs to this player (each player controls their own)
+local function is_player_pawn(pawn, mod)
   if not pawn or not pawn:IsValid() then
     return false
   end
@@ -308,19 +324,13 @@ local function is_local_player_pawn(pawn, mod)
       return false
     end
 
-    -- Check if this is the local player's controller
-    if PlayerController.IsLocalPlayerController and not PlayerController:IsLocalPlayerController() then
-      if mod then mod.Debug("PlayerController is not local - cannot heal other players") end
-      return false
-    end
-
-    -- Check if this pawn is controlled by the local player
+    -- Check if this pawn is controlled by this player
     if PlayerController.Pawn == pawn then
-      if mod then mod.Debug("Pawn belongs to local player") end
+      if mod then mod.Debug("Pawn belongs to this player") end
       return true
     end
 
-    if mod then mod.Debug("Pawn does not belong to local player") end
+    if mod then mod.Debug("Pawn does not belong to this player") end
     return false
   end)
 
@@ -364,11 +374,22 @@ local function hook_damage_event(mod)
         
         if not isPawn then return end
 
-        -- Only heal local player (server-safe)
-        if not is_local_player_pawn(self, mod) then
-          return
+        -- Check ServerMode to determine who gets healed
+        local serverMode = mod.Config.ServerMode or "Global"
+        if serverMode == "Individual" then
+          -- Individual mode: Only heal this player's pawn
+          if not is_player_pawn(self, mod) then
+            return
+          end
+        else
+          -- Global mode: Only host can control healing
+          if mod.is_host_or_server and not mod.is_host_or_server() then
+            mod.Debug("Global mode: Not host - instant heal controlled by host only")
+            return  -- Only host controls healing in Global mode
+          end
+          -- Global mode: Host controls - heal ALL pawns
         end
-        
+
         -- Use ExecuteInGameThread to ensure we're in the game thread
         -- This allows damage to be applied first, then we check health
         ExecuteInGameThread(function()
@@ -429,7 +450,7 @@ local function hook_damage_event(mod)
                       if healAttempts < maxAttempts then
                         local delayOk = pcall(function()
                           -- Wait a tiny bit
-                          for i = 1, 100 do end -- Simple delay
+                          for i = 1, 10000 do end -- Longer delay for game engine
                         end)
                       end
                     end
@@ -520,13 +541,6 @@ function M.install_hooks(mod)
   end
 
   return true
-end
-
--- Update callback for menu system
-function M.update_active(isActive)
-  instantHealEnabled = isActive
-  -- Note: The hook is already registered, but we could add a check
-  -- in the hook callback to respect this state if needed
 end
 
 return M
